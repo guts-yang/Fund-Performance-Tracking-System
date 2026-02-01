@@ -98,3 +98,11 @@ def search_fund(keyword: str, db: Session = Depends(get_db)):
     fetcher = FundDataFetcher()
     results = fetcher.search_fund(keyword)
     return {"results": results}
+
+
+@router.get("/info/{fund_code}", response_model=schemas.FundInfoResponse)
+def get_fund_info_by_code(fund_code: str):
+    """根据基金代码获取基金信息（用于前端自动填充）"""
+    fetcher = FundDataFetcher()
+    fund_info = fetcher.get_fund_info(fund_code)
+    return fund_info

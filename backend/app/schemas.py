@@ -23,6 +23,14 @@ class FundUpdate(BaseModel):
     fund_type: Optional[str] = None
 
 
+class FundInfoResponse(BaseModel):
+    """基金信息响应（用于前端自动填充）"""
+    fund_code: str
+    fund_name: Optional[str] = None
+    fund_type: Optional[str] = "开放式基金"
+    latest_nav: Optional[float] = 0
+
+
 class FundResponse(FundBase):
     """基金响应"""
     model_config = ConfigDict(from_attributes=True)
