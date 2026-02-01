@@ -26,7 +26,7 @@ class FundDataFetcher:
             # 使用 get_base_info 获取基金基本信息
             fund_info = ef.fund.get_base_info(fund_code)
 
-            if fund_info is None or fund_info.empty:
+            if fund_info is None:
                 logger.warning(f"基金 {fund_code} 未找到数据")
                 return {
                     "fund_code": fund_code,
@@ -35,11 +35,36 @@ class FundDataFetcher:
                     "latest_nav": 0,
                 }
 
+            # 处理不同类型的返回值 (dict 或 pandas Series)
+            if hasattr(fund_info, 'empty') and fund_info.empty:
+                logger.warning(f"基金 {fund_code} 数据为空")
+                return {
+                    "fund_code": fund_code,
+                    "fund_name": f"基金{fund_code}",
+                    "fund_type": "开放式基金",
+                    "latest_nav": 0,
+                }
+
+            # 安全地获取基金信息
+            fund_name = f"基金{fund_code}"
+            fund_type = "开放式基金"
+            latest_nav = 0
+
+            if hasattr(fund_info, 'get'):
+                # 是 dict 或 pandas Series
+                fund_name = fund_info.get("基金简称", f"基金{fund_code}")
+                fund_type = fund_info.get("基金类型", "开放式基金")
+                latest_nav = fund_info.get("最新净值", 0)
+            elif isinstance(fund_info, dict):
+                fund_name = fund_info.get("基金简称", f"基金{fund_code}")
+                fund_type = fund_info.get("基金类型", "开放式基金")
+                latest_nav = fund_info.get("最新净值", 0)
+
             return {
                 "fund_code": fund_code,
-                "fund_name": fund_info.get("基金简称", f"基金{fund_code}"),
-                "fund_type": fund_info.get("基金类型", "开放式基金"),
-                "latest_nav": fund_info.get("最新净值", 0),
+                "fund_name": fund_name,
+                "fund_type": fund_type,
+                "latest_nav": float(latest_nav) if latest_nav else 0,
             }
 
         except Exception as e:
@@ -64,8 +89,8 @@ class FundDataFetcher:
         """
         try:
             # 使用 get_quote_history 获取历史净值数据
-            # pz=40000 表示获取全部历史数据
-            history_df = ef.fund.get_quote_history(fund_code, pz=1)
+            # 修复：移除错误的 pz 参数
+            history_df = ef.fund.get_quote_history(fund_code)
 
             if history_df is None or history_df.empty:
                 logger.warning(f"基金 {fund_code} 没有净值数据")

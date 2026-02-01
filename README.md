@@ -217,3 +217,47 @@ A: 确认 `SCHEDULER_ENABLED=true` 且服务器在 16:00 后运行。
 ## 许可证
 
 MIT License
+
+---
+
+## 版本记录
+
+### v1.1.0 (2025-02-01)
+
+**新增功能**：
+- ✨ 基金名称自动获取（可手动修改）- 输入基金代码后自动从 efinance 获取基金名称和类型
+- ✨ 基金列表页快速设置持仓 - 在基金列表页直接点击"设置持仓"按钮快速设置持仓信息
+- ✨ 灵活输入，自动计算第三个字段 - 支持三种自动计算模式：
+  - 输入金额和成本价 → 自动计算份额
+  - 输入金额和份额 → 自动计算成本价
+  - 输入份额和成本价 → 自动计算金额
+- ✨ 基金列表显示持有金额和持有份额列
+
+**优化**：
+- 🔧 优化持仓计算逻辑，支持灵活输入
+- 🔧 改进用户交互体验，添加加载状态提示
+
+**Bug 修复**：
+- 🐛 修复同步功能返回 500 错误的问题（移除错误的 pz 参数）
+- 🐛 修复基金信息不显示的问题（正确处理 pandas Series 和 dict 类型）
+- 🔧 配置 Pydantic 忽略 .env 中的额外字段（extra = "ignore"）
+- 🔧 增强同步端点的错误处理，提供更详细的错误信息
+
+**修改文件**：
+- `backend/app/api/funds.py` - 新增基金信息查询 API，增强错误处理
+- `backend/app/schemas.py` - 新增 FundInfoResponse 模型
+- `backend/app/api/holdings.py` - 优化持仓计算逻辑
+- `backend/app/config.py` - 添加 extra = "ignore" 配置
+- `backend/app/services/fund_fetcher.py` - 修复 API 调用参数和返回值处理
+- `frontend/src/api/fund.js` - 新增 API 调用方法
+- `frontend/src/views/FundList.vue` - 实现新功能
+
+### v1.0.0 (2025-01-XX)
+
+**初始版本**：
+- 🎉 基础基金管理功能（添加、编辑、删除基金）
+- 💰 持仓管理功能
+- 📈 净值查询和同步
+- 📊 收益统计和展示
+- ⏰ 定时任务自动更新净值
+- 🎨 Dashboard 可视化展示

@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+import logging
 
 from ..database import get_db
 from .. import crud, schemas
 from ..services.fund_fetcher import FundDataFetcher
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/funds", tags=["funds"])
 
@@ -75,21 +78,32 @@ def delete_fund(fund_id: int, db: Session = Depends(get_db)):
 @router.post("/{fund_id}/sync", response_model=schemas.NavHistoryResponse)
 def sync_fund(fund_id: int, db: Session = Depends(get_db)):
     """手动同步基金数据"""
-    fund = crud.get_fund(db, fund_id)
-    if not fund:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"基金 ID {fund_id} 不存在"
-        )
+    try:
+        fund = crud.get_fund(db, fund_id)
+        if not fund:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"基金 ID {fund_id} 不存在"
+            )
 
-    result = crud.sync_fund_data(db, fund_id)
-    if not result:
+        result = crud.sync_fund_data(db, fund_id)
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"同步基金 {fund.fund_code} 数据失败，请检查基金代码是否正确或稍后重试"
+            )
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"同步基金数据时发生错误: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"同步基金 {fund.fund_code} 数据失败"
+            detail=f"同步失败：{str(e)}"
         )
-
-    return result
 
 
 @router.post("/search")

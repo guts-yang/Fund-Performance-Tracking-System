@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # 忽略 .env 中的额外字段
 
     @property
     def cors_origins_list(self) -> list[str]:
