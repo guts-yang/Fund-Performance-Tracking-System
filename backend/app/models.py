@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Numeric, Date, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from decimal import Decimal
 from .database import Base
 
 
@@ -40,9 +41,11 @@ class Holding(Base):
     fund = relationship("Fund", back_populates="holdings")
 
     @property
-    def cost(self) -> float:
+    def cost(self) -> Decimal:
         """总成本 = 份额 * 成本单价"""
-        return float(self.shares * self.cost_price) if self.shares and self.cost_price else 0.0
+        if self.shares and self.cost_price:
+            return self.shares * self.cost_price
+        return Decimal("0")
 
     def __repr__(self):
         return f"<Holding(id={self.id}, fund_id={self.fund_id}, amount={self.amount})>"

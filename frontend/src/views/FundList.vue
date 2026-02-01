@@ -257,9 +257,9 @@ const showSetHoldingDialog = (fund) => {
   if (fund.holdings) {
     holdingForm.value = {
       fund_id: fund.id,
-      amount: parseFloat(fund.holdings.amount) || null,
-      shares: parseFloat(fund.holdings.shares) || null,
-      cost_price: parseFloat(fund.holdings.cost_price) || null
+      amount: Number(fund.holdings.amount) || null,
+      shares: Number(fund.holdings.shares) || null,
+      cost_price: Number(fund.holdings.cost_price) || null
     }
   }
 
