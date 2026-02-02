@@ -42,6 +42,64 @@
       </el-col>
     </el-row>
 
+    <!-- 新增：实时估值卡片 -->
+    <el-row :gutter="20" style="margin-top: 20px;" v-if="fund">
+      <el-col :span="24">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>实时估值</span>
+              <div>
+                <el-tag v-if="realtimeData?.is_trading_time" type="success" style="margin-right: 10px;">盘中实时</el-tag>
+                <el-tag v-else type="info">非交易时间</el-tag>
+                <el-button @click="toggleAutoRefresh" style="margin-left: 10px;">
+                  {{ autoRefresh ? '关闭自动刷新' : '开启自动刷新' }}
+                </el-button>
+              </div>
+            </div>
+          </template>
+          <div v-if="realtimeData && realtimeData.realtime_nav">
+            <el-descriptions :column="2" border>
+              <el-descriptions-item label="实时估算净值">
+                <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 20px; font-weight: bold;">
+                  ¥{{ formatNumber(realtimeData.realtime_nav, 4) }}
+                </span>
+              </el-descriptions-item>
+              <el-descriptions-item label="估算涨跌幅">
+                <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 18px; font-weight: bold;">
+                  {{ realtimeData.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(realtimeData.increase_rate, 2) }}%
+                </span>
+              </el-descriptions-item>
+              <el-descriptions-item label="估算时间">
+                {{ formatDateTime(realtimeData.estimate_time) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="最新正式净值">
+                <span v-if="realtimeData.latest_nav_unit_nav">
+                  ¥{{ formatNumber(realtimeData.latest_nav_unit_nav, 4) }}
+                  <span style="color: #909399; font-size: 12px; margin-left: 5px;">
+                    ({{ formatDate(realtimeData.latest_nav_date) }})
+                  </span>
+                </span>
+                <span v-else>-</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="估值差异" v-if="realtimeData.latest_nav_unit_nav">
+                <span :class="getDiffClass(realtimeData)" style="font-weight: bold;">
+                  ¥{{ formatNumber(realtimeData.realtime_nav - realtimeData.latest_nav_unit_nav, 4) }}
+                  ({{ getDiffPercent(realtimeData) }}%)
+                </span>
+              </el-descriptions-item>
+              <el-descriptions-item label="自动刷新">
+                <el-tag :type="autoRefresh ? 'success' : 'info'">
+                  {{ autoRefresh ? '已开启 (每60秒)' : '已关闭' }}
+                </el-tag>
+              </el-descriptions-item>
+            </el-descriptions>
+          </div>
+          <el-empty v-else description="当前非交易时间，暂无实时估值数据" />
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-card style="margin-top: 20px;">
       <template #header>
         <div class="card-header">
@@ -57,10 +115,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import * as echarts from 'echarts'
-import { getFund, getHolding, getLatestNav, getPnLChartData, syncFund } from '@/api/fund'
+import { getFund, getHolding, getLatestNav, getPnLChartData, syncFund, getRealtimeValuation } from '@/api/fund'
 import dayjs from 'dayjs'
 import { Refresh } from '@element-plus/icons-vue'
 
@@ -70,17 +128,26 @@ const fundId = ref(route.params.id)
 const fund = ref(null)
 const holding = ref(null)
 const latestNav = ref(null)
+const realtimeData = ref(null)
 const loading = ref(false)
 const syncing = ref(false)
 const chartRef = ref(null)
 
+// 自动刷新相关
+const autoRefresh = ref(true)
+const refreshInterval = ref(null)
+
 const formatNumber = (num, decimals = 2) => {
-  if (num === null || num === undefined) return '0.00'
+  if (num === null || num === undefined || isNaN(num)) return '0.00'
   return Number(num).toFixed(decimals)
 }
 
 const formatDate = (date) => {
   return dayjs(date).format('YYYY-MM-DD')
+}
+
+const formatDateTime = (datetime) => {
+  return dayjs(datetime).format('YYYY-MM-DD HH:mm:ss')
 }
 
 const fetchData = async () => {
@@ -89,10 +156,57 @@ const fetchData = async () => {
     fund.value = await getFund(fundId.value)
     holding.value = await getHolding(fundId.value).catch(() => null)
     latestNav.value = await getLatestNav(fund.value.fund_code).catch(() => null)
-
+    await fetchRealtimeData()
     await initChart()
   } finally {
     loading.value = false
+  }
+}
+
+const fetchRealtimeData = async () => {
+  if (!fund.value) return
+  try {
+    const data = await getRealtimeValuation(fund.value.fund_code)
+    realtimeData.value = data
+  } catch (error) {
+    // 非交易时间或获取失败时保持原有数据或设为null
+    console.error('获取实时估值失败:', error)
+  }
+}
+
+const getDiffClass = (data) => {
+  if (!data.latest_nav_unit_nav || !data.realtime_nav) return ''
+  const diff = data.realtime_nav - data.latest_nav_unit_nav
+  return diff > 0 ? 'text-red' : diff < 0 ? 'text-green' : ''
+}
+
+const getDiffPercent = (data) => {
+  if (!data.latest_nav_unit_nav || !data.realtime_nav) return '0.00'
+  const diff = data.realtime_nav - data.latest_nav_unit_nav
+  const percent = (diff / data.latest_nav_unit_nav) * 100
+  return (percent >= 0 ? '+' : '') + percent.toFixed(2)
+}
+
+const toggleAutoRefresh = () => {
+  autoRefresh.value = !autoRefresh.value
+  if (autoRefresh.value) {
+    startAutoRefresh()
+  } else {
+    stopAutoRefresh()
+  }
+}
+
+const startAutoRefresh = () => {
+  // 每60秒刷新一次
+  refreshInterval.value = setInterval(() => {
+    fetchRealtimeData()
+  }, 60000)
+}
+
+const stopAutoRefresh = () => {
+  if (refreshInterval.value) {
+    clearInterval(refreshInterval.value)
+    refreshInterval.value = null
   }
 }
 
@@ -175,6 +289,13 @@ const handleSync = async () => {
 
 onMounted(() => {
   fetchData()
+  if (autoRefresh.value) {
+    startAutoRefresh()
+  }
+})
+
+onUnmounted(() => {
+  stopAutoRefresh()
 })
 </script>
 

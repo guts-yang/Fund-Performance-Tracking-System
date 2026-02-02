@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 from decimal import Decimal
 
 
@@ -183,3 +183,39 @@ class TransactionResponse(TransactionBase):
     nav: Decimal
     transaction_date: date
     created_at: datetime
+
+
+# ==================== Realtime Nav Schemas ====================
+class RealtimeNavResponse(BaseModel):
+    """实时估值响应"""
+    fund_code: str = Field(..., description="基金代码")
+    realtime_nav: Optional[float] = Field(None, description="实时估算净值")
+    increase_rate: Optional[float] = Field(None, description="实时估算涨跌幅(%)")
+    estimate_time: Optional[datetime] = Field(None, description="估算时间")
+    latest_nav_date: Optional[date] = Field(None, description="最新净值日期")
+    latest_nav_unit_nav: Optional[float] = Field(None, description="最新正式单位净值")
+    latest_nav_date_field: Optional[date] = Field(None, alias="latest_nav_date", description="最新正式净值日期")
+    is_trading_time: bool = Field(True, description="是否是交易时间")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class RealtimeNavItem(BaseModel):
+    """单只基金的实时估值项"""
+    fund_code: str
+    realtime_nav: Optional[float] = None
+    increase_rate: Optional[float] = None
+    estimate_time: Optional[datetime] = None
+    latest_nav_date: Optional[date] = None
+    latest_nav_unit_nav: Optional[float] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BatchRealtimeNavResponse(BaseModel):
+    """批量实时估值响应"""
+    valuations: List[RealtimeNavItem] = Field(default_factory=list, description="实时估值列表")
+    update_time: datetime = Field(description="更新时间")
+    is_trading_time: bool = Field(True, description="是否是交易时间")
+
+    model_config = ConfigDict(from_attributes=True)

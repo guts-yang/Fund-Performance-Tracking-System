@@ -4,9 +4,17 @@
       <template #header>
         <div class="card-header">
           <span>基金管理</span>
-          <el-button type="primary" @click="showAddDialog">
-            <el-icon><Plus /></el-icon> 添加基金
-          </el-button>
+          <div>
+            <el-tag v-if="autoRefresh" type="success" style="margin-right: 10px;">
+              自动刷新中 ({{ lastUpdateTime ? lastUpdateTime : '--:--:--' }})
+            </el-tag>
+            <el-button @click="toggleAutoRefresh" style="margin-right: 10px;">
+              {{ autoRefresh ? '关闭自动刷新' : '开启自动刷新' }}
+            </el-button>
+            <el-button type="primary" @click="showAddDialog">
+              <el-icon><Plus /></el-icon> 添加基金
+            </el-button>
+          </div>
         </div>
       </template>
 
@@ -31,6 +39,30 @@
               {{ formatNumber(row.holdings.shares) }} 份
             </span>
             <span v-else style="color: #ccc;">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="最新净值" align="right" width="120">
+          <template #default="{ row }">
+            <span v-if="row.latest_nav_value" style="color: #909399; font-size: 12px;">
+              正式
+            </span>
+            <div v-if="row.latest_nav_value">
+              ¥{{ formatNumber(row.latest_nav_value, 4) }}
+            </div>
+            <div v-else style="color: #ccc;">-</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="实时估值" align="right" width="140">
+          <template #default="{ row }">
+            <div v-if="row.realtime_nav">
+              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-weight: bold;">
+                ¥{{ formatNumber(row.realtime_nav, 4) }}
+              </div>
+              <div style="font-size: 12px;" :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'">
+                {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
+              </div>
+            </div>
+            <div v-else style="color: #ccc; font-size: 12px;">非交易时间</div>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="180">
@@ -223,11 +255,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, computed } from 'vue'
+import { ref, onMounted, onUnmounted, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
-import { getFunds, createFund, deleteFund, syncFund, getFundInfoByCode, createOrUpdateHolding, buyFund, sellFund } from '@/api/fund'
+import { getFunds, createFund, deleteFund, syncFund, getFundInfoByCode, createOrUpdateHolding, buyFund, sellFund, getBatchRealtimeValuation } from '@/api/fund'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -243,6 +275,11 @@ const currentFund = ref(null)
 const tradeDialogVisible = ref(false)
 const submittingTrade = ref(false)
 const sellMode = ref('amount')
+
+// 自动刷新相关
+const autoRefresh = ref(true)
+const refreshInterval = ref(null)
+const lastUpdateTime = ref('')
 
 const fundForm = reactive({
   fund_code: '',
@@ -283,8 +320,64 @@ const fetchFunds = async () => {
   loading.value = true
   try {
     funds.value = await getFunds()
+    await fetchRealtimeValuation()
   } finally {
     loading.value = false
+  }
+}
+
+// 获取实时估值
+const fetchRealtimeValuation = async () => {
+  if (funds.value.length === 0) return
+
+  try {
+    const fundCodes = funds.value.map(f => f.fund_code)
+    const result = await getBatchRealtimeValuation(fundCodes)
+
+    // 合并实时估值数据
+    const valuationMap = {}
+    result.valuations.forEach(v => {
+      valuationMap[v.fund_code] = v
+    })
+
+    funds.value.forEach(fund => {
+      const valuation = valuationMap[fund.fund_code]
+      if (valuation) {
+        fund.realtime_nav = valuation.realtime_nav
+        fund.increase_rate = valuation.increase_rate
+        fund.latest_nav_value = valuation.latest_nav_unit_nav
+      }
+    })
+
+    lastUpdateTime.value = dayjs().format('HH:mm:ss')
+  } catch (error) {
+    console.error('获取实时估值失败:', error)
+  }
+}
+
+// 切换自动刷新
+const toggleAutoRefresh = () => {
+  autoRefresh.value = !autoRefresh.value
+  if (autoRefresh.value) {
+    startAutoRefresh()
+  } else {
+    stopAutoRefresh()
+  }
+}
+
+// 开启自动刷新
+const startAutoRefresh = () => {
+  // 每60秒刷新一次
+  refreshInterval.value = setInterval(() => {
+    fetchRealtimeValuation()
+  }, 60000)
+}
+
+// 停止自动刷新
+const stopAutoRefresh = () => {
+  if (refreshInterval.value) {
+    clearInterval(refreshInterval.value)
+    refreshInterval.value = null
   }
 }
 
@@ -495,6 +588,13 @@ const formatDate = (date) => {
 
 onMounted(() => {
   fetchFunds()
+  if (autoRefresh.value) {
+    startAutoRefresh()
+  }
+})
+
+onUnmounted(() => {
+  stopAutoRefresh()
 })
 </script>
 
@@ -507,5 +607,13 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.text-red {
+  color: #f56c6c;
+}
+
+.text-green {
+  color: #67c23a;
 }
 </style>

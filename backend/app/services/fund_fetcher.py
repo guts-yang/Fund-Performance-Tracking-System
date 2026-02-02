@@ -275,3 +275,186 @@ class FundDataFetcher:
         except Exception as e:
             logger.error(f"判断交易日失败: {str(e)}")
             return True  # 默认返回True
+
+    @staticmethod
+    def is_trading_time() -> bool:
+        """
+        判断当前是否是交易时间（盘中）
+
+        基金交易时间：
+        - 工作日 9:30-15:00
+        - 排除周末和节假日
+
+        Returns:
+            是否是交易时间
+        """
+        try:
+            now = datetime.now()
+
+            # 判断是否是工作日（周一到周五）
+            if now.weekday() >= 5:  # 5=周六, 6=周日
+                return False
+
+            # 判断时间是否在 9:30-15:00
+            current_time = now.time()
+            start_time = datetime.strptime("09:30", "%H:%M").time()
+            end_time = datetime.strptime("15:00", "%H:%M").time()
+
+            return start_time <= current_time <= end_time
+
+        except Exception as e:
+            logger.error(f"判断交易时间失败: {str(e)}")
+            return False
+
+    @staticmethod
+    def get_fund_realtime_valuation(fund_code: str) -> Optional[Dict[str, Any]]:
+        """
+        获取基金盘中实时估值
+
+        Args:
+            fund_code: 基金代码 (6位)
+
+        Returns:
+            实时估值信息字典
+            - realtime_nav: 实时估算净值
+            - increase_rate: 实时估算涨跌幅
+            - estimate_time: 估算时间
+            - latest_nav_date: 最新净值日期
+        """
+        try:
+            # 使用 efinance 的实时估值 API
+            result = ef.fund.get_realtime_increase_rate(fund_code)
+
+            if result is None or (hasattr(result, 'empty') and result.empty):
+                logger.warning(f"基金 {fund_code} 暂无实时估值数据")
+                return None
+
+            # 获取第一条数据
+            if hasattr(result, 'iloc'):
+                latest = result.iloc[0]
+            else:
+                latest = result
+
+            # 获取最新净值和涨跌幅
+            latest_nav = None
+            increase_rate = Decimal("0")
+
+            # 处理不同格式的返回数据
+            if hasattr(latest, 'get'):
+                latest_nav = latest.get("最新净值")
+                increase_rate_val = latest.get("估算涨跌幅", 0)
+            elif isinstance(latest, dict):
+                latest_nav = latest.get("最新净值")
+                increase_rate_val = latest.get("估算涨跌幅", 0)
+            else:
+                # 如果是 pandas Series，尝试通过索引获取
+                try:
+                    latest_nav = latest["最新净值"] if "最新净值" in latest.index else None
+                    increase_rate_val = latest["估算涨跌幅"] if "估算涨跌幅" in latest.index else 0
+                except:
+                    pass
+
+            # 处理涨跌幅
+            if increase_rate_val is None or pd.isna(increase_rate_val):
+                increase_rate = Decimal("0")
+            else:
+                if isinstance(increase_rate_val, str):
+                    increase_rate_val = increase_rate_val.replace("%", "").strip()
+                increase_rate = Decimal(str(increase_rate_val))
+
+            # 计算实时估算净值
+            realtime_nav = None
+            if latest_nav and not pd.isna(latest_nav):
+                latest_nav_value = float(latest_nav)
+                realtime_nav = Decimal(str(latest_nav_value * (1 + float(increase_rate) / 100)))
+
+            return {
+                "fund_code": fund_code,
+                "realtime_nav": realtime_nav,
+                "increase_rate": increase_rate,
+                "estimate_time": datetime.now(),
+                "latest_nav_date": latest.get("最新净值公开日期") if hasattr(latest, 'get') else None
+            }
+
+        except Exception as e:
+            logger.error(f"获取基金 {fund_code} 实时估值失败: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
+
+    @staticmethod
+    def get_all_funds_realtime_valuation(fund_codes: list) -> list[Dict[str, Any]]:
+        """
+        批量获取多只基金的实时估值
+
+        Args:
+            fund_codes: 基金代码列表
+
+        Returns:
+            实时估值列表
+        """
+        try:
+            # efinance 支持批量获取
+            result = ef.fund.get_realtime_increase_rate(fund_codes)
+
+            if result is None or (hasattr(result, 'empty') and result.empty):
+                return []
+
+            valuations = []
+            for idx in range(len(result)):
+                row = result.iloc[idx] if hasattr(result, 'iloc') else result[idx]
+
+                fund_code = None
+                latest_nav = None
+                increase_rate_val = 0
+
+                # 提取数据
+                if hasattr(row, 'get'):
+                    fund_code = row.get("基金代码")
+                    latest_nav = row.get("最新净值")
+                    increase_rate_val = row.get("估算涨跌幅", 0)
+                elif isinstance(row, dict):
+                    fund_code = row.get("基金代码")
+                    latest_nav = row.get("最新净值")
+                    increase_rate_val = row.get("估算涨跌幅", 0)
+                elif hasattr(row, '__getitem__'):
+                    # pandas Series
+                    if "基金代码" in row.index:
+                        fund_code = row["基金代码"]
+                    if "最新净值" in row.index:
+                        latest_nav = row["最新净值"]
+                    if "估算涨跌幅" in row.index:
+                        increase_rate_val = row["估算涨跌幅"]
+
+                if not fund_code:
+                    continue
+
+                # 处理涨跌幅
+                if increase_rate_val is None or pd.isna(increase_rate_val):
+                    increase_rate = Decimal("0")
+                else:
+                    if isinstance(increase_rate_val, str):
+                        increase_rate_val = increase_rate_val.replace("%", "").strip()
+                    increase_rate = Decimal(str(increase_rate_val))
+
+                # 计算实时估算净值
+                realtime_nav = None
+                if latest_nav and not pd.isna(latest_nav):
+                    latest_nav_value = float(latest_nav)
+                    realtime_nav = Decimal(str(latest_nav_value * (1 + float(increase_rate) / 100)))
+
+                valuations.append({
+                    "fund_code": fund_code,
+                    "realtime_nav": realtime_nav,
+                    "increase_rate": increase_rate,
+                    "estimate_time": datetime.now(),
+                    "latest_nav_date": row.get("最新净值公开日期") if hasattr(row, 'get') else None
+                })
+
+            return valuations
+
+        except Exception as e:
+            logger.error(f"批量获取实时估值失败: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return []

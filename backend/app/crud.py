@@ -23,6 +23,11 @@ def get_fund_by_code(db: Session, fund_code: str) -> Optional[models.Fund]:
     return db.query(models.Fund).filter(models.Fund.fund_code == fund_code).first()
 
 
+def get_funds_by_codes(db: Session, fund_codes: List[str]) -> List[models.Fund]:
+    """根据基金代码列表批量获取基金"""
+    return db.query(models.Fund).filter(models.Fund.fund_code.in_(fund_codes)).all()
+
+
 def get_funds(db: Session, skip: int = 0, limit: int = 100) -> List[models.Fund]:
     """获取基金列表（包含持仓）"""
     from sqlalchemy.orm import joinedload

@@ -43,9 +43,17 @@
       <template #header>
         <div class="card-header">
           <span>我的基金 ({{ summary?.fund_count || 0 }})</span>
-          <el-button type="primary" @click="handleSyncAll" :loading="syncing">
-            <el-icon><Refresh /></el-icon> 同步数据
-          </el-button>
+          <div>
+            <el-tag v-if="autoRefresh" type="success" style="margin-right: 10px;">
+              自动刷新中 ({{ lastUpdateTime ? lastUpdateTime : '--:--:--' }})
+            </el-tag>
+            <el-button @click="toggleAutoRefresh" style="margin-right: 10px;">
+              {{ autoRefresh ? '关闭自动刷新' : '开启自动刷新' }}
+            </el-button>
+            <el-button type="primary" @click="handleSyncAll" :loading="syncing">
+              <el-icon><Refresh /></el-icon> 同步数据
+            </el-button>
+          </div>
         </div>
       </template>
       <el-table :data="summary?.funds || []" stripe>
@@ -71,14 +79,30 @@
             ¥{{ formatNumber(row.cost) }}
           </template>
         </el-table-column>
-        <el-table-column prop="latest_nav" label="最新净值" align="right">
+        <el-table-column prop="latest_nav" label="最新净值" align="right" width="120">
           <template #default="{ row }">
-            ¥{{ formatNumber(row.latest_nav, 4) }}
+            <span v-if="row.latest_nav" style="color: #909399; font-size: 12px;">正式</span>
+            <div>¥{{ formatNumber(row.latest_nav, 4) }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="market_value" label="市值" align="right">
+        <el-table-column label="实时估值" align="right" width="140">
           <template #default="{ row }">
-            ¥{{ formatNumber(row.market_value) }}
+            <div v-if="row.realtime_nav">
+              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-weight: bold;">
+                ¥{{ formatNumber(row.realtime_nav, 4) }}
+              </div>
+              <div style="font-size: 12px;" :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'">
+                {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
+              </div>
+            </div>
+            <div v-else style="color: #ccc; font-size: 12px;">-</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="市值(实时)" align="right" width="140">
+          <template #default="{ row }">
+            <span style="font-weight: bold;">
+              ¥{{ formatNumber(row.realtime_market_value || row.market_value) }}
+            </span>
           </template>
         </el-table-column>
         <el-table-column prop="profit" label="收益" align="right">
@@ -108,15 +132,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useFundStore } from '@/stores/fund'
-import { syncAllNav } from '@/api/fund'
+import { syncAllNav, getBatchRealtimeValuation } from '@/api/fund'
 import { Refresh } from '@element-plus/icons-vue'
+import dayjs from 'dayjs'
 
 const fundStore = useFundStore()
 const syncing = ref(false)
-
 const summary = ref(null)
+
+// 自动刷新相关
+const autoRefresh = ref(true)
+const refreshInterval = ref(null)
+const lastUpdateTime = ref('')
 
 const formatNumber = (num, decimals = 2) => {
   if (num === null || num === undefined) return '0.00'
@@ -129,17 +158,87 @@ const getProfitClass = (value) => {
   return ''
 }
 
-onMounted(async () => {
+const fetchSummaryWithRealtime = async () => {
   await fundStore.fetchSummary()
   summary.value = fundStore.summary
+
+  // 获取实时估值
+  if (summary.value?.funds?.length > 0) {
+    try {
+      const fundCodes = summary.value.funds.map(f => f.fund_code)
+      const result = await getBatchRealtimeValuation(fundCodes)
+
+      // 合并实时估值数据并更新市值
+      const valuationMap = {}
+      result.valuations.forEach(v => {
+        valuationMap[v.fund_code] = v
+      })
+
+      summary.value.funds.forEach(fund => {
+        const valuation = valuationMap[fund.fund_code]
+        if (valuation && valuation.realtime_nav) {
+          fund.realtime_nav = valuation.realtime_nav
+          fund.increase_rate = valuation.increase_rate
+          // 使用实时估值计算市值
+          fund.realtime_market_value = fund.shares * valuation.realtime_nav
+        }
+      })
+
+      // 更新总市值（使用实时市值）
+      const totalRealtimeMarketValue = summary.value.funds.reduce((sum, fund) => {
+        return sum + (fund.realtime_market_value || fund.market_value || 0)
+      }, 0)
+      summary.value.total_market_value = totalRealtimeMarketValue
+
+      // 更新总收益和收益率
+      summary.value.total_profit = totalRealtimeMarketValue - summary.value.total_cost
+      summary.value.total_profit_rate = (summary.value.total_profit / summary.value.total_cost) * 100
+
+      lastUpdateTime.value = dayjs().format('HH:mm:ss')
+    } catch (error) {
+      console.error('获取实时估值失败:', error)
+    }
+  }
+}
+
+const toggleAutoRefresh = () => {
+  autoRefresh.value = !autoRefresh.value
+  if (autoRefresh.value) {
+    startAutoRefresh()
+  } else {
+    stopAutoRefresh()
+  }
+}
+
+const startAutoRefresh = () => {
+  refreshInterval.value = setInterval(() => {
+    fetchSummaryWithRealtime()
+  }, 60000)
+}
+
+const stopAutoRefresh = () => {
+  if (refreshInterval.value) {
+    clearInterval(refreshInterval.value)
+    refreshInterval.value = null
+  }
+}
+
+onMounted(async () => {
+  await fetchSummaryWithRealtime()
+  if (autoRefresh.value) {
+    startAutoRefresh()
+  }
+})
+
+onUnmounted(() => {
+  stopAutoRefresh()
 })
 
 const handleSyncAll = async () => {
   syncing.value = true
   try {
     await syncAllNav()
-    await fundStore.fetchSummary()
-    summary.value = fundStore.summary
+    await fetchSummaryWithRealtime()
   } finally {
     syncing.value = false
   }
@@ -199,6 +298,14 @@ const handleSyncAll = async () => {
 }
 
 .profit-negative {
+  color: #67c23a;
+}
+
+.text-red {
+  color: #f56c6c;
+}
+
+.text-green {
   color: #67c23a;
 }
 </style>
