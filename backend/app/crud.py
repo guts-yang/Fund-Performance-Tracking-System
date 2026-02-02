@@ -373,3 +373,124 @@ def sync_all_funds(db: Session) -> dict:
         "total_count": len(funds),
         "errors": errors
     }
+
+
+# ==================== Transaction CRUD ====================
+def get_transactions(db: Session, fund_id: int, skip: int = 0, limit: int = 100) -> List[models.Transaction]:
+    """获取基金交易历史"""
+    return db.query(models.Transaction)\
+        .filter(models.Transaction.fund_id == fund_id)\
+        .order_by(desc(models.Transaction.transaction_date))\
+        .offset(skip)\
+        .limit(limit)\
+        .all()
+
+
+def execute_buy_transaction(db: Session, fund_id: int, amount: Decimal) -> models.Transaction:
+    """执行买入交易"""
+    from .services.fund_fetcher import FundDataFetcher
+
+    # 获取基金信息
+    fund = get_fund(db, fund_id)
+    if not fund:
+        raise ValueError(f"基金 ID {fund_id} 不存在")
+
+    # 获取当日净值
+    fetcher = FundDataFetcher()
+    nav_data = fetcher.get_fund_nav(fund.fund_code)
+
+    if not nav_data or not nav_data.get("unit_nav"):
+        raise ValueError("无法获取基金净值")
+
+    nav = nav_data["unit_nav"]
+    transaction_date = nav_data["date"]
+
+    # 计算买入份额
+    shares = (amount / nav).quantize(Decimal("0.0001"))
+
+    # 创建交易记录
+    transaction = models.Transaction(
+        fund_id=fund_id,
+        transaction_type="buy",
+        amount=amount,
+        shares=shares,
+        nav=nav,
+        transaction_date=transaction_date
+    )
+    db.add(transaction)
+
+    # 更新持仓
+    holding = get_holding(db, fund_id)
+    if holding:
+        # 更新现有持仓
+        holding.amount += amount
+        holding.shares += shares
+        holding.cost_price = nav  # 覆盖为当日净值
+    else:
+        # 创建新持仓
+        holding = models.Holding(
+            fund_id=fund_id,
+            amount=amount,
+            shares=shares,
+            cost_price=nav
+        )
+        db.add(holding)
+
+    db.commit()
+    db.refresh(transaction)
+    return transaction
+
+
+def execute_sell_transaction(db: Session, fund_id: int, amount: Optional[Decimal] = None, shares: Optional[Decimal] = None) -> models.Transaction:
+    """执行卖出交易"""
+    from .services.fund_fetcher import FundDataFetcher
+
+    # 获取持仓
+    holding = get_holding(db, fund_id)
+    if not holding:
+        raise ValueError(f"基金 ID {fund_id} 没有持仓")
+
+    # 获取当日净值
+    fund = get_fund(db, fund_id)
+    fetcher = FundDataFetcher()
+    nav_data = fetcher.get_fund_nav(fund.fund_code)
+
+    if not nav_data or not nav_data.get("unit_nav"):
+        raise ValueError("无法获取基金净值")
+
+    nav = nav_data["unit_nav"]
+    transaction_date = nav_data["date"]
+
+    # 根据输入计算卖出金额和份额
+    if shares and not amount:
+        # 输入了份额，计算金额
+        amount = (shares * nav).quantize(Decimal("0.01"))
+    elif amount and not shares:
+        # 输入了金额，计算份额
+        shares = (amount / nav).quantize(Decimal("0.0001"))
+    else:
+        raise ValueError("必须且只能输入卖出金额或卖出份额之一")
+
+    # 验证份额是否足够
+    if shares > holding.shares:
+        raise ValueError(f"持仓份额不足，当前持有 {holding.shares} 份，尝试卖出 {shares} 份")
+
+    # 创建交易记录
+    transaction = models.Transaction(
+        fund_id=fund_id,
+        transaction_type="sell",
+        amount=amount,
+        shares=shares,
+        nav=nav,
+        transaction_date=transaction_date
+    )
+    db.add(transaction)
+
+    # 更新持仓（成本价保持不变）
+    holding.amount -= amount
+    holding.shares -= shares
+    # cost_price 保持不变
+
+    db.commit()
+    db.refresh(transaction)
+    return transaction

@@ -6,7 +6,7 @@ import logging
 from .config import settings
 from .database import init_db
 from .scheduler import start_scheduler, stop_scheduler
-from .api import funds, holdings, nav, pnl
+from .api import funds, holdings, nav, pnl, transactions
 
 # Configure logging
 logging.basicConfig(
@@ -52,6 +52,7 @@ app.include_router(funds.router)
 app.include_router(holdings.router)
 app.include_router(nav.router)
 app.include_router(pnl.router)
+app.include_router(transactions.router)
 
 
 @app.get("/")

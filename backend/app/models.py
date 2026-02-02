@@ -20,6 +20,7 @@ class Fund(Base):
     holdings = relationship("Holding", back_populates="fund", uselist=False, cascade="all, delete-orphan")
     nav_history = relationship("NavHistory", back_populates="fund", cascade="all, delete-orphan")
     daily_pnl = relationship("DailyPnL", back_populates="fund", cascade="all, delete-orphan")
+    transactions = relationship("Transaction", back_populates="fund", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Fund(id={self.id}, code={self.fund_code}, name={self.fund_name})>"
@@ -100,3 +101,23 @@ class DailyPnL(Base):
 
     def __repr__(self):
         return f"<DailyPnL(id={self.id}, fund_id={self.fund_id}, date={self.date}, profit={self.profit})>"
+
+
+class Transaction(Base):
+    """交易记录表"""
+    __tablename__ = "transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fund_id = Column(Integer, ForeignKey("funds.id", ondelete="CASCADE"), nullable=False, comment="基金ID")
+    transaction_type = Column(String(10), nullable=False, comment="交易类型：buy/sell")
+    amount = Column(Numeric(15, 2), nullable=False, comment="交易金额")
+    shares = Column(Numeric(15, 4), nullable=False, comment="交易份额")
+    nav = Column(Numeric(10, 4), nullable=False, comment="当日净值")
+    transaction_date = Column(Date, nullable=False, comment="交易日期")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
+
+    # Relationships
+    fund = relationship("Fund", back_populates="transactions")
+
+    def __repr__(self):
+        return f"<Transaction(id={self.id}, fund_id={self.fund_id}, type={self.transaction_type}, amount={self.amount})>"

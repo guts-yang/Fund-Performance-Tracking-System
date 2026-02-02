@@ -38,8 +38,11 @@
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="350" fixed="right">
           <template #default="{ row }">
+            <el-button type="success" link @click="showTradeDialog(row)">
+              交易
+            </el-button>
             <el-button type="primary" link @click="showSetHoldingDialog(row)">
               设置持仓
             </el-button>
@@ -134,15 +137,97 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- Trade Dialog -->
+    <el-dialog v-model="tradeDialogVisible" title="基金交易" width="600px">
+      <el-form :model="tradeForm" label-width="120px">
+        <el-form-item label="交易类型">
+          <el-radio-group v-model="tradeForm.transaction_type">
+            <el-radio value="buy">买入</el-radio>
+            <el-radio value="sell">卖出</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <template v-if="tradeForm.transaction_type === 'buy'">
+          <el-form-item label="买入金额">
+            <el-input-number
+              v-model="tradeForm.amount"
+              :precision="2"
+              :min="0"
+              placeholder="请输入买入金额"
+              style="width: 200px;"
+            />
+            <span style="margin-left: 10px; color: #909399;">元</span>
+          </el-form-item>
+        </template>
+
+        <template v-if="tradeForm.transaction_type === 'sell'">
+          <el-form-item label="卖出方式">
+            <el-radio-group v-model="sellMode">
+              <el-radio value="amount">按金额</el-radio>
+              <el-radio value="shares">按份额</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item v-if="sellMode === 'amount'" label="卖出金额">
+            <el-input-number
+              v-model="tradeForm.amount"
+              :precision="2"
+              :min="0"
+              :max="maxSellAmount"
+              placeholder="请输入卖出金额"
+              style="width: 200px;"
+            />
+            <span style="margin-left: 10px; color: #909399;">元</span>
+            <span style="margin-left: 10px; color: #909399;">最大可卖出: ¥{{ formatNumber(maxSellAmount) }}</span>
+          </el-form-item>
+
+          <el-form-item v-else label="卖出份额">
+            <el-input-number
+              v-model="tradeForm.shares"
+              :precision="4"
+              :min="0"
+              :max="maxSellShares"
+              placeholder="请输入卖出份额"
+              style="width: 200px;"
+            />
+            <span style="margin-left: 10px; color: #909399;">份</span>
+            <span style="margin-left: 10px; color: #909399;">最大可卖出: {{ formatNumber(maxSellShares, 4) }} 份</span>
+          </el-form-item>
+        </template>
+
+        <el-alert
+          v-if="tradeForm.transaction_type === 'buy'"
+          title="系统将自动获取当日净值计算买入份额"
+          type="info"
+          :closable="false"
+          style="margin-top: 20px;"
+        />
+        <el-alert
+          v-else
+          title="系统将自动获取当日净值，卖出后成本价保持不变"
+          type="warning"
+          :closable="false"
+          style="margin-top: 20px;"
+        />
+      </el-form>
+
+      <template #footer>
+        <el-button @click="tradeDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleTrade" :loading="submittingTrade">
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
-import { getFunds, createFund, deleteFund, syncFund, getFundInfoByCode, createOrUpdateHolding } from '@/api/fund'
+import { getFunds, createFund, deleteFund, syncFund, getFundInfoByCode, createOrUpdateHolding, buyFund, sellFund } from '@/api/fund'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -155,6 +240,9 @@ const fetchingInfo = ref(false)
 const holdingDialogVisible = ref(false)
 const submittingHolding = ref(false)
 const currentFund = ref(null)
+const tradeDialogVisible = ref(false)
+const submittingTrade = ref(false)
+const sellMode = ref('amount')
 
 const fundForm = reactive({
   fund_code: '',
@@ -167,6 +255,28 @@ const holdingForm = ref({
   amount: null,
   shares: null,
   cost_price: null
+})
+
+const tradeForm = ref({
+  fund_id: null,
+  transaction_type: 'buy',
+  amount: null,
+  shares: null
+})
+
+// 计算最大可卖出金额和份额
+const maxSellAmount = computed(() => {
+  if (currentFund.value?.holdings) {
+    return Number(currentFund.value.holdings.amount)
+  }
+  return 0
+})
+
+const maxSellShares = computed(() => {
+  if (currentFund.value?.holdings) {
+    return Number(currentFund.value.holdings.shares)
+  }
+  return 0
 })
 
 const fetchFunds = async () => {
@@ -284,6 +394,71 @@ const handleSaveHolding = async () => {
     ElMessage.error('保存失败：' + (error.response?.data?.detail || error.message))
   } finally {
     submittingHolding.value = false
+  }
+}
+
+// 显示交易对话框
+const showTradeDialog = (fund) => {
+  currentFund.value = fund
+  tradeForm.value = {
+    fund_id: fund.id,
+    transaction_type: 'buy',
+    amount: null,
+    shares: null
+  }
+  sellMode.value = 'amount'
+  tradeDialogVisible.value = true
+}
+
+// 执行交易
+const handleTrade = async () => {
+  if (tradeForm.value.transaction_type === 'buy') {
+    if (!tradeForm.value.amount || tradeForm.value.amount <= 0) {
+      ElMessage.warning('请输入买入金额')
+      return
+    }
+  } else {
+    // 卖出验证
+    if (sellMode.value === 'amount') {
+      if (!tradeForm.value.amount || tradeForm.value.amount <= 0) {
+        ElMessage.warning('请输入卖出金额')
+        return
+      }
+    } else {
+      if (!tradeForm.value.shares || tradeForm.value.shares <= 0) {
+        ElMessage.warning('请输入卖出份额')
+        return
+      }
+    }
+  }
+
+  submittingTrade.value = true
+  try {
+    const payload = {
+      fund_id: tradeForm.value.fund_id,
+      transaction_type: tradeForm.value.transaction_type
+    }
+
+    if (tradeForm.value.transaction_type === 'buy') {
+      payload.amount = tradeForm.value.amount
+      const response = await buyFund(payload)
+      ElMessage.success(`买入成功，获得 ${response.shares} 份`)
+    } else {
+      if (sellMode.value === 'amount') {
+        payload.amount = tradeForm.value.amount
+      } else {
+        payload.shares = tradeForm.value.shares
+      }
+      const response = await sellFund(payload)
+      ElMessage.success(`卖出成功，卖出 ${response.shares} 份`)
+    }
+
+    tradeDialogVisible.value = false
+    await fetchFunds()
+  } catch (error) {
+    ElMessage.error('交易失败：' + (error.response?.data?.detail || error.message))
+  } finally {
+    submittingTrade.value = false
   }
 }
 

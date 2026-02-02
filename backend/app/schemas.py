@@ -159,3 +159,27 @@ class SyncResponse(BaseModel):
     message: str
     funds_updated: int = 0
     errors: list[str] = Field(default_factory=list)
+
+
+# ==================== Transaction Schemas ====================
+class TransactionBase(BaseModel):
+    """交易基础模型"""
+    transaction_type: str = Field(..., description="交易类型：buy/sell")
+    amount: Optional[Decimal] = Field(None, ge=0, description="交易金额（买入必填）")
+    shares: Optional[Decimal] = Field(None, ge=0, description="交易份额（卖出可选）")
+
+
+class TransactionCreate(TransactionBase):
+    """创建交易请求"""
+    fund_id: int = Field(..., description="基金ID")
+
+
+class TransactionResponse(TransactionBase):
+    """交易响应"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    fund_id: int
+    nav: Decimal
+    transaction_date: date
+    created_at: datetime

@@ -26,3 +26,8 @@ export const syncAllNav = () => api.post('/nav/sync-all')
 export const getPortfolioSummary = () => api.get('/pnl/summary')
 export const getDailyPnL = (fundId, params = {}) => api.get(`/pnl/daily/${fundId}`, { params })
 export const getPnLChartData = (fundId, params = {}) => api.get(`/pnl/chart/${fundId}`, { params })
+
+// Transaction APIs
+export const buyFund = (data) => api.post('/transactions/buy', data)
+export const sellFund = (data) => api.post('/transactions/sell', data)
+export const getTransactions = (fundId, params = {}) => api.get(`/transactions/${fundId}`, { params })
