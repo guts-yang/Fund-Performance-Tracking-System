@@ -85,16 +85,28 @@
             <div>¥{{ formatNumber(row.latest_nav, 4) }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="实时估值" align="right" width="140">
+        <el-table-column label="实时数据" align="right" width="160">
           <template #default="{ row }">
-            <div v-if="row.realtime_nav">
-              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-weight: bold;">
-                ¥{{ formatNumber(row.realtime_nav, 4) }}
+            <!-- 场内基金 -->
+            <div v-if="row.is_listed_fund && row.current_price">
+              <el-tag size="small" type="warning">场内</el-tag>
+              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-weight: bold; margin-top: 5px;">
+                ¥{{ formatNumber(row.current_price, 4) }}
               </div>
-              <div style="font-size: 12px;" :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'">
+              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 12px;">
                 {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
               </div>
             </div>
+
+            <!-- 场外基金 -->
+            <div v-else-if="row.increase_rate !== null">
+              <el-tag size="small" type="info">场外</el-tag>
+              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-weight: bold; margin-top: 5px;">
+                {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
+              </div>
+              <div style="font-size: 12px; color: #909399;">估算</div>
+            </div>
+
             <div v-else style="color: #ccc; font-size: 12px;">-</div>
           </template>
         </el-table-column>
@@ -176,11 +188,21 @@ const fetchSummaryWithRealtime = async () => {
 
       summary.value.funds.forEach(fund => {
         const valuation = valuationMap[fund.fund_code]
-        if (valuation && valuation.realtime_nav) {
-          fund.realtime_nav = valuation.realtime_nav
+        if (valuation) {
+          fund.is_listed_fund = valuation.is_listed_fund
           fund.increase_rate = valuation.increase_rate
-          // 使用实时估值计算市值
-          fund.realtime_market_value = fund.shares * valuation.realtime_nav
+          fund.current_price = valuation.current_price
+
+          // 场内基金使用实时股价计算市值
+          if (valuation.is_listed_fund && valuation.current_price) {
+            fund.realtime_nav = valuation.current_price
+            fund.realtime_market_value = fund.shares * valuation.current_price
+          }
+          // 场外基金使用估算涨跌幅计算市值
+          else if (valuation.increase_rate !== null) {
+            fund.realtime_nav = fund.latest_nav * (1 + valuation.increase_rate / 100)
+            fund.realtime_market_value = fund.shares * fund.realtime_nav
+          }
         }
       })
 

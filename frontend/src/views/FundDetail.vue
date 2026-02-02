@@ -48,8 +48,16 @@
         <el-card>
           <template #header>
             <div class="card-header">
-              <span>实时涨跌幅</span>
+              <span>
+                {{ realtimeData?.is_listed_fund ? '实时股价' : '实时估值' }}
+              </span>
               <div>
+                <el-tag v-if="realtimeData?.is_listed_fund" type="warning" style="margin-right: 10px;">
+                  场内基金
+                </el-tag>
+                <el-tag v-else type="info" style="margin-right: 10px;">
+                  场外基金
+                </el-tag>
                 <el-tag v-if="realtimeData?.is_trading_time" type="success" style="margin-right: 10px;">盘中实时</el-tag>
                 <el-tag v-else type="info">非交易时间</el-tag>
                 <el-button @click="toggleAutoRefresh" style="margin-left: 10px;">
@@ -58,16 +66,36 @@
               </div>
             </div>
           </template>
-          <div v-if="realtimeData && realtimeData.increase_rate !== null">
+          <div v-if="realtimeData && (realtimeData.increase_rate !== null || realtimeData.current_price)">
             <el-descriptions :column="2" border>
-              <el-descriptions-item label="实时涨跌幅">
+
+              <!-- 场内基金：显示实时股价 -->
+              <el-descriptions-item v-if="realtimeData.is_listed_fund" label="实时股价">
+                <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 28px; font-weight: bold;">
+                  ¥{{ formatNumber(realtimeData.current_price, 4) }}
+                </span>
+              </el-descriptions-item>
+
+              <!-- 场外基金：显示估算涨跌幅 -->
+              <el-descriptions-item v-else label="估算涨跌幅">
                 <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 28px; font-weight: bold;">
                   {{ realtimeData.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(realtimeData.increase_rate, 2) }}%
                 </span>
               </el-descriptions-item>
-              <el-descriptions-item label="估算时间">
+
+              <el-descriptions-item label="涨跌幅">
+                <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 20px; font-weight: bold;">
+                  {{ realtimeData.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(realtimeData.increase_rate, 2) }}%
+                </span>
+                <div style="font-size: 12px; color: #909399; margin-top: 5px;">
+                  {{ realtimeData.is_listed_fund ? '实际涨跌' : '估算涨跌' }}
+                </div>
+              </el-descriptions-item>
+
+              <el-descriptions-item label="数据更新时间">
                 {{ formatDateTime(realtimeData.estimate_time) }}
               </el-descriptions-item>
+
               <el-descriptions-item label="最新正式净值">
                 <span v-if="realtimeData.latest_nav_unit_nav">
                   ¥{{ formatNumber(realtimeData.latest_nav_unit_nav, 4) }}
@@ -77,6 +105,7 @@
                 </span>
                 <span v-else>-</span>
               </el-descriptions-item>
+
               <el-descriptions-item label="自动刷新">
                 <el-tag :type="autoRefresh ? 'success' : 'info'">
                   {{ autoRefresh ? '已开启 (每60秒)' : '已关闭' }}
@@ -84,7 +113,7 @@
               </el-descriptions-item>
             </el-descriptions>
           </div>
-          <el-empty v-else description="当前非交易时间，暂无实时涨跌幅数据" />
+          <el-empty v-else description="当前非交易时间，暂无实时数据" />
         </el-card>
       </el-col>
     </el-row>

@@ -187,20 +187,51 @@ class TransactionResponse(TransactionBase):
 
 # ==================== Realtime Nav Schemas ====================
 class RealtimeNavResponse(BaseModel):
-    """实时估值响应（只返回涨跌幅）"""
+    """实时估值响应（支持场内基金实时股价和场外基金估算涨跌幅）"""
     fund_code: str = Field(..., description="基金代码")
-    increase_rate: Optional[float] = Field(None, description="实时估算涨跌幅(%)")
-    estimate_time: Optional[datetime] = Field(None, description="估算时间")
+
+    # 数据源标识
+    data_source: Optional[str] = Field(
+        None,
+        description="数据源: 'stock'表示实时股价, 'estimate'表示估算涨跌幅, 'nav'表示正式净值"
+    )
+    is_listed_fund: Optional[bool] = Field(
+        False,
+        description="是否为场内基金（ETF/LOF）"
+    )
+
+    # 价格信息（场内基金用）
+    current_price: Optional[float] = Field(
+        None,
+        description="实时股价（场内基金）"
+    )
+
+    # 涨跌幅信息（通用）
+    increase_rate: Optional[float] = Field(None, description="涨跌幅(%)，场内基金为实际涨跌，场外基金为估算涨跌")
+
+    # 时间信息
+    estimate_time: Optional[datetime] = Field(None, description="数据获取时间")
     latest_nav_date: Optional[date] = Field(None, description="最新净值日期")
     latest_nav_unit_nav: Optional[float] = Field(None, description="最新正式单位净值")
+
+    # 交易状态
     is_trading_time: bool = Field(True, description="是否是交易时间")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class RealtimeNavItem(BaseModel):
-    """单只基金的实时估值项"""
+    """单只基金的实时估值项（支持场内和场外基金）"""
     fund_code: str
+
+    # 数据源标识
+    data_source: Optional[str] = Field(None, description="数据源: 'stock', 'estimate', 'nav'")
+    is_listed_fund: Optional[bool] = Field(False, description="是否为场内基金")
+
+    # 价格信息（场内基金用）
+    current_price: Optional[float] = Field(None, description="实时股价（场内基金）")
+
+    # 涨跌幅信息
     increase_rate: Optional[float] = None
     estimate_time: Optional[datetime] = None
     latest_nav_date: Optional[date] = None

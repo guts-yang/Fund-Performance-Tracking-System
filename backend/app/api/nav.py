@@ -70,10 +70,16 @@ async def get_realtime_valuation(
     db: Session = Depends(get_db)
 ):
     """
-    获取基金实时涨跌幅
+    获取基金实时涨跌幅（支持场内和场外基金）
+
+    场内基金（ETF/LOF）：返回实时股价和实际涨跌幅
+    场外基金：返回估算涨跌幅
 
     返回:
-    - increase_rate: 实时估算涨跌幅(%)
+    - data_source: 数据源（stock/estimate/nav）
+    - is_listed_fund: 是否为场内基金
+    - current_price: 实时股价（场内基金）
+    - increase_rate: 涨跌幅(%)
     - latest_nav_unit_nav: 最新正式净值
     - estimate_time: 估算时间
     - is_trading_time: 是否是交易时间
@@ -93,6 +99,8 @@ async def get_realtime_valuation(
         latest_nav = crud.get_latest_nav(db, fund.id)
         return schemas.RealtimeNavResponse(
             fund_code=fund_code,
+            data_source="nav",
+            is_listed_fund=False,
             increase_rate=float(latest_nav.daily_growth * 100) if latest_nav and latest_nav.daily_growth else None,
             estimate_time=None,
             latest_nav_date=latest_nav.date if latest_nav else None,
@@ -108,21 +116,27 @@ async def get_realtime_valuation(
         if (datetime.now() - cached_time).seconds < 60:
             return cached_data
 
-    # 获取实时涨跌幅
-    realtime_data = fetcher.get_fund_realtime_valuation(fund_code)
+    # 获取基金信息（包含类型）
+    fund = crud.get_fund_by_code(db, fund_code)
+    if not fund:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"基金代码 {fund_code} 不存在"
+        )
+
+    # 获取实时估值（传入基金类型）
+    realtime_data = fetcher.get_fund_realtime_valuation(
+        fund_code,
+        fund_type=fund.fund_type
+    )
 
     if not realtime_data:
         # 如果获取失败，返回最新正式净值的日增长率
-        fund = crud.get_fund_by_code(db, fund_code)
-        if not fund:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"基金代码 {fund_code} 不存在"
-            )
-
         latest_nav = crud.get_latest_nav(db, fund.id)
         return schemas.RealtimeNavResponse(
             fund_code=fund_code,
+            data_source="nav",
+            is_listed_fund=False,
             increase_rate=float(latest_nav.daily_growth * 100) if latest_nav and latest_nav.daily_growth else None,
             estimate_time=None,
             latest_nav_date=latest_nav.date if latest_nav else None,
@@ -131,18 +145,19 @@ async def get_realtime_valuation(
         )
 
     # 获取最新正式净值
-    fund = crud.get_fund_by_code(db, fund_code)
     latest_nav_unit_nav = None
     latest_nav_date = None
 
-    if fund:
-        latest_nav = crud.get_latest_nav(db, fund.id)
-        if latest_nav:
-            latest_nav_unit_nav = float(latest_nav.unit_nav)
-            latest_nav_date = latest_nav.date
+    latest_nav = crud.get_latest_nav(db, fund.id)
+    if latest_nav:
+        latest_nav_unit_nav = float(latest_nav.unit_nav)
+        latest_nav_date = latest_nav.date
 
     response = schemas.RealtimeNavResponse(
         fund_code=fund_code,
+        data_source=realtime_data.get("data_source"),
+        is_listed_fund=realtime_data.get("is_listed_fund", False),
+        current_price=realtime_data.get("current_price"),
         increase_rate=realtime_data.get("increase_rate"),
         estimate_time=realtime_data.get("estimate_time"),
         latest_nav_date=realtime_data.get("latest_nav_date") or latest_nav_date,
@@ -162,7 +177,7 @@ async def get_batch_realtime_valuation(
     db: Session = Depends(get_db)
 ):
     """
-    批量获取多只基金实时涨跌幅
+    批量获取多只基金实时涨跌幅（支持场内和场外基金）
 
     用于仪表盘和基金列表页面
     """
@@ -172,12 +187,16 @@ async def get_batch_realtime_valuation(
     valuations = []
 
     if is_trading:
-        # 交易时间获取实时涨跌幅
-        realtime_data_list = fetcher.get_all_funds_realtime_valuation(fund_codes)
-
-        # 构建基金代码到基金ID的映射
+        # 获取基金信息（包含类型）
         funds = crud.get_funds_by_codes(db, fund_codes)
+        fund_types = {f.fund_code: f.fund_type for f in funds}
         fund_id_map = {f.fund_code: f.id for f in funds}
+
+        # 批量获取实时估值（传入类型字典）
+        realtime_data_list = fetcher.get_all_funds_realtime_valuation(
+            fund_codes,
+            fund_types=fund_types
+        )
 
         for realtime_data in realtime_data_list:
             fund_id = fund_id_map.get(realtime_data["fund_code"])
@@ -192,6 +211,9 @@ async def get_batch_realtime_valuation(
 
             valuations.append(schemas.RealtimeNavItem(
                 fund_code=realtime_data["fund_code"],
+                data_source=realtime_data.get("data_source"),
+                is_listed_fund=realtime_data.get("is_listed_fund", False),
+                current_price=realtime_data.get("current_price"),
                 increase_rate=realtime_data.get("increase_rate"),
                 estimate_time=realtime_data.get("estimate_time"),
                 latest_nav_date=realtime_data.get("latest_nav_date") or latest_nav_date,
@@ -204,6 +226,8 @@ async def get_batch_realtime_valuation(
             latest_nav = crud.get_latest_nav(db, fund.id)
             valuations.append(schemas.RealtimeNavItem(
                 fund_code=fund.fund_code,
+                data_source="nav",
+                is_listed_fund=False,
                 increase_rate=float(latest_nav.daily_growth * 100) if latest_nav and latest_nav.daily_growth else None,
                 estimate_time=None,
                 latest_nav_date=latest_nav.date if latest_nav else None,

@@ -277,6 +277,71 @@ class FundDataFetcher:
             return True  # 默认返回True
 
     @staticmethod
+    def is_listed_fund(fund_type: Optional[str]) -> bool:
+        """
+        判断是否为场内基金（ETF或LOF）
+
+        Args:
+            fund_type: 基金类型字符串，如 "ETF", "LOF", "开放式基金" 等
+
+        Returns:
+            True 表示场内基金，False 表示场外基金
+        """
+        if not fund_type:
+            return False
+
+        fund_type_upper = fund_type.upper()
+        # ETF判断：包含 "ETF" 字样
+        # LOF判断：包含 "LOF" 字样
+        return 'ETF' in fund_type_upper or 'LOF' in fund_type_upper
+
+    @staticmethod
+    def get_listed_fund_realtime_price(fund_code: str) -> Optional[Dict[str, Any]]:
+        """
+        获取场内基金（ETF/LOF）的实时股价
+
+        Args:
+            fund_code: 基金代码
+
+        Returns:
+            包含实时股价和涨跌幅的字典，失败返回 None
+        """
+        try:
+            # 尝试获取ETF行情
+            etf_data = ef.stock.get_realtime_quotes('ETF')
+            if etf_data is not None and not etf_data.empty:
+                fund_row = etf_data[etf_data['股票代码'] == fund_code]
+                if not fund_row.empty:
+                    row = fund_row.iloc[0]
+                    return {
+                        "fund_code": fund_code,
+                        "current_price": float(row['最新价']),
+                        "increase_rate": float(row['涨跌幅']),  # 已是百分比
+                        "data_source": "stock",
+                        "estimate_time": datetime.now()
+                    }
+
+            # 尝试获取LOF行情
+            lof_data = ef.stock.get_realtime_quotes('LOF')
+            if lof_data is not None and not lof_data.empty:
+                fund_row = lof_data[lof_data['股票代码'] == fund_code]
+                if not fund_row.empty:
+                    row = fund_row.iloc[0]
+                    return {
+                        "fund_code": fund_code,
+                        "current_price": float(row['最新价']),
+                        "increase_rate": float(row['涨跌幅']),
+                        "data_source": "stock",
+                        "estimate_time": datetime.now()
+                    }
+
+            return None
+
+        except Exception as e:
+            logger.error(f"获取场内基金 {fund_code} 实时股价失败: {str(e)}")
+            return None
+
+    @staticmethod
     def is_trading_time() -> bool:
         """
         判断当前是否是交易时间（盘中）
@@ -307,22 +372,38 @@ class FundDataFetcher:
             return False
 
     @staticmethod
-    def get_fund_realtime_valuation(fund_code: str) -> Optional[Dict[str, Any]]:
+    def get_fund_realtime_valuation(fund_code: str, fund_type: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
-        获取基金盘中实时估值
+        获取基金盘中实时估值（支持场内和场外基金）
 
         Args:
             fund_code: 基金代码 (6位)
+            fund_type: 基金类型（用于判断是否为场内基金）
 
         Returns:
             实时估值信息字典
-            - realtime_nav: 实时估算净值
-            - increase_rate: 实时估算涨跌幅
+            - is_listed_fund: 是否为场内基金
+            - current_price: 实时股价（场内基金）
+            - increase_rate: 涨跌幅
+            - data_source: 数据源（stock/estimate）
             - estimate_time: 估算时间
             - latest_nav_date: 最新净值日期
         """
+        # 判断是否为场内基金
+        is_listed = FundDataFetcher.is_listed_fund(fund_type)
+
+        if is_listed:
+            # 场内基金：优先使用实时股价
+            stock_data = FundDataFetcher.get_listed_fund_realtime_price(fund_code)
+            if stock_data:
+                stock_data['is_listed_fund'] = True
+                return stock_data
+            else:
+                # 降级到估算涨跌幅
+                logger.info(f"场内基金 {fund_code} 实时股价获取失败，降级到估算涨跌幅")
+
+        # 场外基金或场内基金降级：使用估算涨跌幅
         try:
-            # 使用 efinance 的实时估值 API
             result = ef.fund.get_realtime_increase_rate(fund_code)
 
             if result is None or (hasattr(result, 'empty') and result.empty):
@@ -370,12 +451,11 @@ class FundDataFetcher:
                     # 已经是百分比形式
                     increase_rate = Decimal(str(increase_rate_float))
 
-            # 不再计算实时估算净值，只返回涨跌幅
-            # 实时估算净值的计算可能不准确，直接使用涨跌幅更有意义
-
             return {
                 "fund_code": fund_code,
                 "increase_rate": float(increase_rate),
+                "data_source": "estimate",
+                "is_listed_fund": is_listed,
                 "estimate_time": datetime.now(),
                 "latest_nav_date": latest.get("最新净值公开日期") if hasattr(latest, 'get') else None
             }
@@ -387,76 +467,124 @@ class FundDataFetcher:
             return None
 
     @staticmethod
-    def get_all_funds_realtime_valuation(fund_codes: list) -> list[Dict[str, Any]]:
+    def get_all_funds_realtime_valuation(fund_codes: list, fund_types: Optional[Dict[str, str]] = None) -> list[Dict[str, Any]]:
         """
-        批量获取多只基金的实时估值
+        批量获取多只基金的实时估值（支持场内和场外基金）
 
         Args:
             fund_codes: 基金代码列表
+            fund_types: 基金类型字典 {fund_code: fund_type}
 
         Returns:
             实时估值列表
         """
         try:
-            # efinance 支持批量获取
-            result = ef.fund.get_realtime_increase_rate(fund_codes)
+            # 分离场内和场外基金
+            listed_fund_codes = []
+            offshore_fund_codes = []
 
-            if result is None or (hasattr(result, 'empty') and result.empty):
-                return []
+            if fund_types:
+                for code in fund_codes:
+                    if FundDataFetcher.is_listed_fund(fund_types.get(code)):
+                        listed_fund_codes.append(code)
+                    else:
+                        offshore_fund_codes.append(code)
+            else:
+                # 如果没有提供类型信息，全部按场外基金处理
+                offshore_fund_codes = fund_codes
 
             valuations = []
-            for idx in range(len(result)):
-                row = result.iloc[idx] if hasattr(result, 'iloc') else result[idx]
 
-                fund_code = None
-                latest_nav = None
-                increase_rate_val = 0
+            # 1. 批量获取场内基金实时股价
+            if listed_fund_codes:
+                try:
+                    # 获取所有ETF和LOF的实时行情
+                    etf_data = ef.stock.get_realtime_quotes('ETF')
+                    lof_data = ef.stock.get_realtime_quotes('LOF')
 
-                # 提取数据
-                if hasattr(row, 'get'):
-                    fund_code = row.get("基金代码")
-                    latest_nav = row.get("最新净值")
-                    increase_rate_val = row.get("估算涨跌幅", 0)
-                elif isinstance(row, dict):
-                    fund_code = row.get("基金代码")
-                    latest_nav = row.get("最新净值")
-                    increase_rate_val = row.get("估算涨跌幅", 0)
-                elif hasattr(row, '__getitem__'):
-                    # pandas Series
-                    if "基金代码" in row.index:
-                        fund_code = row["基金代码"]
-                    if "最新净值" in row.index:
-                        latest_nav = row["最新净值"]
-                    if "估算涨跌幅" in row.index:
-                        increase_rate_val = row["估算涨跌幅"]
+                    # 合并ETF和LOF数据
+                    listed_data = None
+                    if etf_data is not None and not etf_data.empty:
+                        if lof_data is not None and not lof_data.empty:
+                            listed_data = pd.concat([etf_data, lof_data], ignore_index=True)
+                        else:
+                            listed_data = etf_data
+                    elif lof_data is not None and not lof_data.empty:
+                        listed_data = lof_data
 
-                if not fund_code:
-                    continue
+                    if listed_data is not None:
+                        for code in listed_fund_codes:
+                            fund_row = listed_data[listed_data['股票代码'] == code]
+                            if not fund_row.empty:
+                                row = fund_row.iloc[0]
+                                valuations.append({
+                                    "fund_code": code,
+                                    "current_price": float(row['最新价']),
+                                    "increase_rate": float(row['涨跌幅']),
+                                    "data_source": "stock",
+                                    "is_listed_fund": True,
+                                    "estimate_time": datetime.now()
+                                })
+                            else:
+                                # 场内基金未找到股价，降级到场外处理
+                                offshore_fund_codes.append(code)
+                except Exception as e:
+                    logger.error(f"批量获取场内基金实时股价失败: {e}")
+                    # 失败时全部降级到场外处理
+                    offshore_fund_codes.extend(listed_fund_codes)
 
-                # 处理涨跌幅
-                if increase_rate_val is None or pd.isna(increase_rate_val):
-                    increase_rate = Decimal("0")
-                else:
-                    if isinstance(increase_rate_val, str):
-                        increase_rate_val = increase_rate_val.replace("%", "").strip()
-                    # efinance返回的涨跌幅可能是小数形式（如0.025）或百分比形式（如2.5）
-                    # 如果值小于1，说明是小数形式，需要转换为百分比
-                    increase_rate_float = float(increase_rate_val)
-                    if abs(increase_rate_float) < 1:
-                        # 小数形式，转换为百分比
-                        increase_rate = Decimal(str(increase_rate_float * 100))
-                    else:
-                        # 已经是百分比形式
-                        increase_rate = Decimal(str(increase_rate_float))
+            # 2. 批量获取场外基金估算涨跌幅
+            if offshore_fund_codes:
+                result = ef.fund.get_realtime_increase_rate(offshore_fund_codes)
 
-                # 不再计算实时估算净值，只返回涨跌幅
+                if result is not None and not (hasattr(result, 'empty') and result.empty):
+                    for idx in range(len(result)):
+                        row = result.iloc[idx] if hasattr(result, 'iloc') else result[idx]
 
-                valuations.append({
-                    "fund_code": fund_code,
-                    "increase_rate": float(increase_rate),
-                    "estimate_time": datetime.now(),
-                    "latest_nav_date": row.get("最新净值公开日期") if hasattr(row, 'get') else None
-                })
+                        fund_code = None
+                        increase_rate_val = 0
+
+                        # 提取数据
+                        if hasattr(row, 'get'):
+                            fund_code = row.get("基金代码")
+                            increase_rate_val = row.get("估算涨跌幅", 0)
+                        elif isinstance(row, dict):
+                            fund_code = row.get("基金代码")
+                            increase_rate_val = row.get("估算涨跌幅", 0)
+                        elif hasattr(row, '__getitem__'):
+                            # pandas Series
+                            if "基金代码" in row.index:
+                                fund_code = row["基金代码"]
+                            if "估算涨跌幅" in row.index:
+                                increase_rate_val = row["估算涨跌幅"]
+
+                        if not fund_code:
+                            continue
+
+                        # 处理涨跌幅
+                        if increase_rate_val is None or pd.isna(increase_rate_val):
+                            increase_rate = Decimal("0")
+                        else:
+                            if isinstance(increase_rate_val, str):
+                                increase_rate_val = increase_rate_val.replace("%", "").strip()
+                            # efinance返回的涨跌幅可能是小数形式（如0.025）或百分比形式（如2.5）
+                            # 如果值小于1，说明是小数形式，需要转换为百分比
+                            increase_rate_float = float(increase_rate_val)
+                            if abs(increase_rate_float) < 1:
+                                # 小数形式，转换为百分比
+                                increase_rate = Decimal(str(increase_rate_float * 100))
+                            else:
+                                # 已经是百分比形式
+                                increase_rate = Decimal(str(increase_rate_float))
+
+                        valuations.append({
+                            "fund_code": fund_code,
+                            "increase_rate": float(increase_rate),
+                            "data_source": "estimate",
+                            "is_listed_fund": False,
+                            "estimate_time": datetime.now(),
+                            "latest_nav_date": row.get("最新净值公开日期") if hasattr(row, 'get') else None
+                        })
 
             return valuations
 

@@ -52,16 +52,34 @@
             <div v-else style="color: #ccc;">-</div>
           </template>
         </el-table-column>
-        <el-table-column label="实时涨跌幅" align="right" width="150">
+        <el-table-column label="实时数据" align="right" width="180">
           <template #default="{ row }">
-            <div v-if="row.increase_rate !== null && row.increase_rate !== undefined">
+            <!-- 场内基金：显示实时股价和涨跌 -->
+            <div v-if="row.is_listed_fund && row.current_price">
+              <div style="font-size: 12px; color: #909399; margin-bottom: 4px;">
+                <el-tag size="small" type="warning">场内</el-tag>
+                <span style="margin-left: 5px;">实时股价</span>
+              </div>
+              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 18px; font-weight: bold;">
+                ¥{{ formatNumber(row.current_price, 4) }}
+              </div>
+              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 12px;">
+                {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
+              </div>
+            </div>
+
+            <!-- 场外基金：显示估算涨跌幅 -->
+            <div v-else-if="row.increase_rate !== null && row.increase_rate !== undefined">
+              <div style="font-size: 12px; color: #909399; margin-bottom: 4px;">
+                <el-tag size="small" type="info">场外</el-tag>
+                <span style="margin-left: 5px;">估算涨跌</span>
+              </div>
               <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 20px; font-weight: bold;">
                 {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
               </div>
-              <div style="font-size: 12px; color: #909399;">
-                实时估算
-              </div>
             </div>
+
+            <!-- 无数据 -->
             <div v-else style="color: #ccc; font-size: 12px;">非交易时间</div>
           </template>
         </el-table-column>
@@ -345,6 +363,9 @@ const fetchRealtimeValuation = async () => {
       if (valuation) {
         fund.increase_rate = valuation.increase_rate
         fund.latest_nav_value = valuation.latest_nav_unit_nav
+        fund.is_listed_fund = valuation.is_listed_fund
+        fund.current_price = valuation.current_price
+        fund.data_source = valuation.data_source
       }
     })
 
@@ -555,9 +576,9 @@ const handleTrade = async () => {
 }
 
 // 格式化数字
-const formatNumber = (num) => {
+const formatNumber = (num, precision = 2) => {
   if (num === null || num === undefined || isNaN(num)) return '0.00'
-  return Number(num).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return Number(num).toFixed(precision).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
 const handleDelete = async (fund) => {
