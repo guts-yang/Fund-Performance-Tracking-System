@@ -42,13 +42,13 @@
       </el-col>
     </el-row>
 
-    <!-- 新增：实时估值卡片 -->
+    <!-- 新增：实时涨跌幅卡片 -->
     <el-row :gutter="20" style="margin-top: 20px;" v-if="fund">
       <el-col :span="24">
         <el-card>
           <template #header>
             <div class="card-header">
-              <span>实时估值</span>
+              <span>实时涨跌幅</span>
               <div>
                 <el-tag v-if="realtimeData?.is_trading_time" type="success" style="margin-right: 10px;">盘中实时</el-tag>
                 <el-tag v-else type="info">非交易时间</el-tag>
@@ -58,15 +58,10 @@
               </div>
             </div>
           </template>
-          <div v-if="realtimeData && realtimeData.realtime_nav">
+          <div v-if="realtimeData && realtimeData.increase_rate !== null">
             <el-descriptions :column="2" border>
-              <el-descriptions-item label="实时估算净值">
-                <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 20px; font-weight: bold;">
-                  ¥{{ formatNumber(realtimeData.realtime_nav, 4) }}
-                </span>
-              </el-descriptions-item>
-              <el-descriptions-item label="估算涨跌幅">
-                <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 18px; font-weight: bold;">
+              <el-descriptions-item label="实时涨跌幅">
+                <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 28px; font-weight: bold;">
                   {{ realtimeData.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(realtimeData.increase_rate, 2) }}%
                 </span>
               </el-descriptions-item>
@@ -82,12 +77,6 @@
                 </span>
                 <span v-else>-</span>
               </el-descriptions-item>
-              <el-descriptions-item label="估值差异" v-if="realtimeData.latest_nav_unit_nav">
-                <span :class="getDiffClass(realtimeData)" style="font-weight: bold;">
-                  ¥{{ formatNumber(realtimeData.realtime_nav - realtimeData.latest_nav_unit_nav, 4) }}
-                  ({{ getDiffPercent(realtimeData) }}%)
-                </span>
-              </el-descriptions-item>
               <el-descriptions-item label="自动刷新">
                 <el-tag :type="autoRefresh ? 'success' : 'info'">
                   {{ autoRefresh ? '已开启 (每60秒)' : '已关闭' }}
@@ -95,7 +84,7 @@
               </el-descriptions-item>
             </el-descriptions>
           </div>
-          <el-empty v-else description="当前非交易时间，暂无实时估值数据" />
+          <el-empty v-else description="当前非交易时间，暂无实时涨跌幅数据" />
         </el-card>
       </el-col>
     </el-row>

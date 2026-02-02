@@ -360,18 +360,22 @@ class FundDataFetcher:
             else:
                 if isinstance(increase_rate_val, str):
                     increase_rate_val = increase_rate_val.replace("%", "").strip()
-                increase_rate = Decimal(str(increase_rate_val))
+                # efinance返回的涨跌幅可能是小数形式（如0.025）或百分比形式（如2.5）
+                # 如果值小于1，说明是小数形式，需要转换为百分比
+                increase_rate_float = float(increase_rate_val)
+                if abs(increase_rate_float) < 1:
+                    # 小数形式，转换为百分比
+                    increase_rate = Decimal(str(increase_rate_float * 100))
+                else:
+                    # 已经是百分比形式
+                    increase_rate = Decimal(str(increase_rate_float))
 
-            # 计算实时估算净值
-            realtime_nav = None
-            if latest_nav and not pd.isna(latest_nav):
-                latest_nav_value = float(latest_nav)
-                realtime_nav = Decimal(str(latest_nav_value * (1 + float(increase_rate) / 100)))
+            # 不再计算实时估算净值，只返回涨跌幅
+            # 实时估算净值的计算可能不准确，直接使用涨跌幅更有意义
 
             return {
                 "fund_code": fund_code,
-                "realtime_nav": realtime_nav,
-                "increase_rate": increase_rate,
+                "increase_rate": float(increase_rate),
                 "estimate_time": datetime.now(),
                 "latest_nav_date": latest.get("最新净值公开日期") if hasattr(latest, 'get') else None
             }
@@ -435,18 +439,21 @@ class FundDataFetcher:
                 else:
                     if isinstance(increase_rate_val, str):
                         increase_rate_val = increase_rate_val.replace("%", "").strip()
-                    increase_rate = Decimal(str(increase_rate_val))
+                    # efinance返回的涨跌幅可能是小数形式（如0.025）或百分比形式（如2.5）
+                    # 如果值小于1，说明是小数形式，需要转换为百分比
+                    increase_rate_float = float(increase_rate_val)
+                    if abs(increase_rate_float) < 1:
+                        # 小数形式，转换为百分比
+                        increase_rate = Decimal(str(increase_rate_float * 100))
+                    else:
+                        # 已经是百分比形式
+                        increase_rate = Decimal(str(increase_rate_float))
 
-                # 计算实时估算净值
-                realtime_nav = None
-                if latest_nav and not pd.isna(latest_nav):
-                    latest_nav_value = float(latest_nav)
-                    realtime_nav = Decimal(str(latest_nav_value * (1 + float(increase_rate) / 100)))
+                # 不再计算实时估算净值，只返回涨跌幅
 
                 valuations.append({
                     "fund_code": fund_code,
-                    "realtime_nav": realtime_nav,
-                    "increase_rate": increase_rate,
+                    "increase_rate": float(increase_rate),
                     "estimate_time": datetime.now(),
                     "latest_nav_date": row.get("最新净值公开日期") if hasattr(row, 'get') else None
                 })

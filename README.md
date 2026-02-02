@@ -5,6 +5,7 @@
 ## 系统预览
 
 ![首页截图](figures/home.png)
+![基金管理](figures/funds_management.png)
 
 ## 项目简介
 

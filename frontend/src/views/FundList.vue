@@ -52,14 +52,14 @@
             <div v-else style="color: #ccc;">-</div>
           </template>
         </el-table-column>
-        <el-table-column label="实时估值" align="right" width="140">
+        <el-table-column label="实时涨跌幅" align="right" width="150">
           <template #default="{ row }">
-            <div v-if="row.realtime_nav">
-              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-weight: bold;">
-                ¥{{ formatNumber(row.realtime_nav, 4) }}
-              </div>
-              <div style="font-size: 12px;" :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'">
+            <div v-if="row.increase_rate !== null && row.increase_rate !== undefined">
+              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 20px; font-weight: bold;">
                 {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
+              </div>
+              <div style="font-size: 12px; color: #909399;">
+                实时估算
               </div>
             </div>
             <div v-else style="color: #ccc; font-size: 12px;">非交易时间</div>
@@ -343,7 +343,6 @@ const fetchRealtimeValuation = async () => {
     funds.value.forEach(fund => {
       const valuation = valuationMap[fund.fund_code]
       if (valuation) {
-        fund.realtime_nav = valuation.realtime_nav
         fund.increase_rate = valuation.increase_rate
         fund.latest_nav_value = valuation.latest_nav_unit_nav
       }
