@@ -11,8 +11,11 @@
       </template>
 
       <el-table :data="funds" stripe v-loading="loading">
-        <el-table-column prop="fund_code" label="基金代码" width="120" />
-        <el-table-column prop="fund_name" label="基金名称" />
+        <el-table-column prop="fund_code" label="基金名称" width="200">
+          <template #default="{ row }">
+            {{ row.fund_name || row.fund_code }}
+          </template>
+        </el-table-column>
         <el-table-column prop="fund_type" label="基金类型" width="150" />
         <el-table-column label="持有金额" align="right" width="150">
           <template #default="{ row }">
@@ -86,7 +89,7 @@
     <el-dialog v-model="holdingDialogVisible" title="设置持仓" width="600px">
       <el-form :model="holdingForm" label-width="120px">
         <el-alert
-          title="输入任意两个字段，第三个将自动计算"
+          title="只需填写持有金额，系统将自动获取最新净值计算份额"
           type="info"
           :closable="false"
           style="margin-bottom: 20px;"
@@ -97,38 +100,25 @@
             v-model="holdingForm.amount"
             :precision="2"
             :min="0"
-            placeholder="持有金额"
-            @change="calculateThirdField"
+            placeholder="请输入持有金额"
             style="width: 200px;"
           />
           <span style="margin-left: 10px; color: #909399;">元</span>
         </el-form-item>
 
+        <el-divider content-position="left">自动计算结果</el-divider>
+
         <el-form-item label="持有份额">
-          <el-input-number
-            v-model="holdingForm.shares"
-            :precision="4"
-            :min="0"
-            placeholder="持有份额"
-            @change="calculateThirdField"
-            style="width: 200px;"
-          />
-          <span style="margin-left: 10px; color: #909399;">份</span>
+          <span style="color: #67c23a;">
+            {{ formatNumber(holdingForm.shares, 4) }} 份
+          </span>
         </el-form-item>
 
         <el-form-item label="成本单价">
-          <el-input-number
-            v-model="holdingForm.cost_price"
-            :precision="4"
-            :min="0"
-            placeholder="成本单价"
-            @change="calculateThirdField"
-            style="width: 200px;"
-          />
-          <span style="margin-left: 10px; color: #909399;">元/份</span>
+          <span style="color: #67c23a;">
+            ¥{{ formatNumber(holdingForm.cost_price, 4) }}
+          </span>
         </el-form-item>
-
-        <el-divider />
 
         <el-form-item label="总成本">
           <span style="font-size: 18px; font-weight: bold; color: #409eff;">
@@ -266,39 +256,28 @@ const showSetHoldingDialog = (fund) => {
   holdingDialogVisible.value = true
 }
 
-// 自动计算第三个字段
-const calculateThirdField = () => {
-  const { amount, shares, cost_price } = holdingForm.value
-
-  // 统计已填写的字段数量
-  const filled = [amount, shares, cost_price].filter(v => v !== null && v !== undefined && v > 0).length
-
-  if (filled === 2) {
-    // 输入两个字段，自动计算第三个
-    if (amount && cost_price && !shares) {
-      // 计算份额 = 金额 / 成本价
-      holdingForm.value.shares = parseFloat((amount / cost_price).toFixed(4))
-    } else if (amount && shares && !cost_price) {
-      // 计算成本价 = 金额 / 份额
-      holdingForm.value.cost_price = parseFloat((amount / shares).toFixed(4))
-    } else if (shares && cost_price && !amount) {
-      // 计算金额 = 份额 * 成本价
-      holdingForm.value.amount = parseFloat((shares * cost_price).toFixed(2))
-    }
-  }
-}
-
 // 保存持仓
 const handleSaveHolding = async () => {
-  if (!holdingForm.value.amount || !holdingForm.value.shares || !holdingForm.value.cost_price) {
-    ElMessage.warning('请填写完整持仓信息（或输入两个字段自动计算）')
+  if (!holdingForm.value.amount || holdingForm.value.amount <= 0) {
+    ElMessage.warning('请填写持有金额')
     return
   }
 
   submittingHolding.value = true
   try {
-    await createOrUpdateHolding(holdingForm.value)
-    ElMessage.success('持仓设置成功')
+    const payload = {
+      fund_id: holdingForm.value.fund_id,
+      amount: holdingForm.value.amount,
+      auto_fetch_nav: true  // 启用自动获取净值
+    }
+
+    const response = await createOrUpdateHolding(payload)
+
+    // 更新表单显示计算结果
+    holdingForm.value.shares = Number(response.shares)
+    holdingForm.value.cost_price = Number(response.cost_price)
+
+    ElMessage.success('持仓设置成功，已自动获取净值')
     holdingDialogVisible.value = false
     await fetchFunds()
   } catch (error) {

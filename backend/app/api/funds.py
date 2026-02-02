@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 import logging
 
 from ..database import get_db
-from .. import crud, schemas
+from .. import crud, schemas, models
 from ..services.fund_fetcher import FundDataFetcher
 
 logger = logging.getLogger(__name__)
@@ -35,8 +35,13 @@ def create_fund(fund: schemas.FundCreate, db: Session = Depends(get_db)):
 
 @router.get("/", response_model=List[schemas.FundResponse])
 def get_funds(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """获取所有基金列表"""
-    return crud.get_funds(db, skip=skip, limit=limit)
+    """获取所有基金列表（包含持仓信息）"""
+    funds = db.query(models.Fund)\
+        .options(joinedload(models.Fund.holdings))\
+        .offset(skip)\
+        .limit(limit)\
+        .all()
+    return funds
 
 
 @router.get("/{fund_id}", response_model=schemas.FundResponse)

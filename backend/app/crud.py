@@ -24,8 +24,13 @@ def get_fund_by_code(db: Session, fund_code: str) -> Optional[models.Fund]:
 
 
 def get_funds(db: Session, skip: int = 0, limit: int = 100) -> List[models.Fund]:
-    """获取基金列表"""
-    return db.query(models.Fund).offset(skip).limit(limit).all()
+    """获取基金列表（包含持仓）"""
+    from sqlalchemy.orm import joinedload
+    return db.query(models.Fund)\
+        .options(joinedload(models.Fund.holdings))\
+        .offset(skip)\
+        .limit(limit)\
+        .all()
 
 
 def create_fund(db: Session, fund: FundCreate) -> models.Fund:

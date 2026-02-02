@@ -4,6 +4,42 @@ from typing import Optional
 from decimal import Decimal
 
 
+# ==================== Holding Schemas (Moved before Fund Schemas) ====================
+class HoldingBase(BaseModel):
+    """持仓基础模型"""
+    amount: Decimal = Field(..., ge=0, description="持有金额")
+    shares: Optional[Decimal] = Field(None, ge=0, description="持有份额（可选，自动计算）")
+    cost_price: Optional[Decimal] = Field(None, ge=0, description="成本单价（可选）")
+
+
+class HoldingCreate(HoldingBase):
+    """创建持仓请求"""
+    fund_id: int = Field(..., description="基金ID")
+    auto_fetch_nav: bool = Field(
+        default=False,
+        description="是否自动获取净值来计算份额"
+    )
+
+
+class HoldingUpdate(BaseModel):
+    """更新持仓请求"""
+    amount: Decimal
+    shares: Optional[Decimal] = None
+    cost_price: Optional[Decimal] = None
+    auto_fetch_nav: bool = Field(default=False)
+
+
+class HoldingResponse(HoldingBase):
+    """持仓响应"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    fund_id: int
+    created_at: datetime
+    updated_at: datetime
+    cost: Decimal = Field(description="总成本")
+
+
 # ==================== Fund Schemas ====================
 class FundBase(BaseModel):
     """基金基础模型"""
@@ -38,37 +74,7 @@ class FundResponse(FundBase):
     id: int
     created_at: datetime
     updated_at: datetime
-
-
-# ==================== Holding Schemas ====================
-class HoldingBase(BaseModel):
-    """持仓基础模型"""
-    amount: Decimal = Field(..., ge=0, description="持有金额")
-    shares: Optional[Decimal] = Field(None, ge=0, description="持有份额（可选，自动计算）")
-    cost_price: Optional[Decimal] = Field(None, ge=0, description="成本单价（可选）")
-
-
-class HoldingCreate(HoldingBase):
-    """创建持仓请求"""
-    fund_id: int = Field(..., description="基金ID")
-
-
-class HoldingUpdate(BaseModel):
-    """更新持仓请求"""
-    amount: Decimal
-    shares: Optional[Decimal] = None
-    cost_price: Optional[Decimal] = None
-
-
-class HoldingResponse(HoldingBase):
-    """持仓响应"""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    fund_id: int
-    created_at: datetime
-    updated_at: datetime
-    cost: Decimal = Field(description="总成本")
+    holdings: Optional[HoldingResponse] = None
 
 
 # ==================== NavHistory Schemas ====================
