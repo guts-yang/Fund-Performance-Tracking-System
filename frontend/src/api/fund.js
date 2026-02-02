@@ -13,7 +13,6 @@ export const syncFund = (id) => api.post(`/funds/${id}/sync`)
 export const getHoldings = (params = {}) => api.get('/holdings', { params })
 export const getHolding = (fundId) => api.get(`/holdings/${fundId}`)
 export const createOrUpdateHolding = (data) => api.post('/holdings', data)
-export const createHolding = (data) => api.post('/holdings', data)
 export const updateHolding = (fundId, data) => api.put(`/holdings/${fundId}`, data)
 export const deleteHolding = (fundId) => api.delete(`/holdings/${fundId}`)
 

@@ -1,155 +1,234 @@
 <template>
-  <div class="dashboard">
-    <el-row :gutter="20" class="summary-row">
-      <el-col :span="6">
-        <el-card class="summary-card">
-          <div class="card-content">
-            <div class="card-label">总成本</div>
-            <div class="card-value">¥{{ formatNumber(summary?.total_cost || 0) }}</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="summary-card">
-          <div class="card-content">
-            <div class="card-label">总市值</div>
-            <div class="card-value">¥{{ formatNumber(summary?.total_market_value || 0) }}</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="summary-card" :class="getProfitClass(summary?.total_profit)">
-          <div class="card-content">
-            <div class="card-label">总收益</div>
-            <div class="card-value">
-              {{ summary?.total_profit >= 0 ? '+' : '' }}¥{{ formatNumber(summary?.total_profit || 0) }}
+  <div class="dashboard space-y-8">
+    <!-- Summary Cards Row -->
+    <el-row :gutter="24" class="summary-row">
+      <!-- Total Cost Card -->
+      <el-col :span="6" class="summary-col">
+        <div class="glass-card-enhanced card-hover p-6 relative">
+          <div class="flex items-center justify-between mb-4">
+            <div class="card-label text-sm text-gray-400 flex items-center font-modern uppercase tracking-wider">
+              <span class="w-2 h-2 bg-sci-cyan rounded-full mr-2 animate-pulse"></span>
+              总成本
+            </div>
+            <div class="card-icon w-10 h-10 flex items-center justify-center
+                        bg-sci-cyan/10 border border-sci-cyan/40 rounded-lg
+                        shadow-glow-cyan-sm">
+              <span class="text-sci-cyan">💰</span>
             </div>
           </div>
-        </el-card>
+          <div class="card-value text-white font-data text-glow-cyan-enhanced">
+            ¥{{ formatNumber(summary?.total_cost || 0) }}
+          </div>
+        </div>
       </el-col>
-      <el-col :span="6">
-        <el-card class="summary-card" :class="getProfitClass(summary?.total_profit_rate)">
-          <div class="card-content">
-            <div class="card-label">总收益率</div>
-            <div class="card-value">
-              {{ summary?.total_profit_rate >= 0 ? '+' : '' }}{{ formatNumber(summary?.total_profit_rate || 0, 2) }}%
+
+      <!-- Total Market Value Card -->
+      <el-col :span="6" class="summary-col">
+        <div class="glass-card-enhanced card-hover p-6 relative">
+          <div class="flex items-center justify-between mb-4">
+            <div class="card-label text-sm text-gray-400 flex items-center font-modern uppercase tracking-wider">
+              <span class="w-2 h-2 bg-sci-gold rounded-full mr-2 animate-pulse"></span>
+              总市值
+            </div>
+            <div class="card-icon w-10 h-10 flex items-center justify-center
+                        bg-sci-gold/10 border border-sci-gold/40 rounded-lg
+                        shadow-glow-gold-sm">
+              <span class="text-sci-gold">📊</span>
             </div>
           </div>
-        </el-card>
+          <div class="card-value text-sci-gold font-data text-glow-gold-enhanced">
+            ¥{{ formatNumber(summary?.total_market_value || 0) }}
+          </div>
+        </div>
+      </el-col>
+
+      <!-- Total Profit Card -->
+      <el-col :span="6" class="summary-col">
+        <div class="glass-card-enhanced card-hover p-6 relative"
+             :class="getProfitClass(summary?.total_profit)">
+          <div class="flex items-center justify-between mb-4">
+            <div class="card-label text-sm text-gray-400 flex items-center font-modern uppercase tracking-wider">
+              <span class="w-2 h-2 rounded-full mr-2 animate-pulse"
+                    :class="summary?.total_profit >= 0 ? 'bg-sci-success' : 'bg-sci-danger'"></span>
+              总收益
+            </div>
+            <div class="card-icon w-10 h-10 flex items-center justify-center
+                        bg-navy-800/60 rounded-lg"
+                 :class="summary?.total_profit >= 0 ? 'border-sci-success/40' : 'border-sci-danger/40'"
+                 :style="'border: 1px solid ' + (summary?.total_profit >= 0 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)')">
+              <span class="text-lg" :class="summary?.total_profit >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                {{ summary?.total_profit >= 0 ? '📈' : '📉' }}
+              </span>
+            </div>
+          </div>
+          <div class="card-value font-data"
+               :class="getProfitClass(summary?.total_profit)">
+            {{ summary?.total_profit >= 0 ? '+' : '' }}¥{{ formatNumber(summary?.total_profit || 0) }}
+          </div>
+        </div>
+      </el-col>
+
+      <!-- Total Profit Rate Card -->
+      <el-col :span="6" class="summary-col">
+        <div class="glass-card-enhanced card-hover p-6 relative"
+             :class="getProfitClass(summary?.total_profit_rate)">
+          <div class="flex items-center justify-between mb-4">
+            <div class="card-label text-sm text-gray-400 flex items-center font-modern uppercase tracking-wider">
+              <span class="w-2 h-2 rounded-full mr-2 animate-pulse"
+                    :class="summary?.total_profit_rate >= 0 ? 'bg-sci-success' : 'bg-sci-danger'"></span>
+              总收益率
+            </div>
+            <div class="card-icon w-10 h-10 flex items-center justify-center
+                        bg-navy-800/60 rounded-lg"
+                 :style="'border: 1px solid ' + (summary?.total_profit_rate >= 0 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)')">
+              <span class="text-lg" :class="summary?.total_profit_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                %
+              </span>
+            </div>
+          </div>
+          <div class="card-value font-data"
+               :class="getProfitClass(summary?.total_profit_rate)">
+            {{ summary?.total_profit_rate >= 0 ? '+' : '' }}{{ formatNumber(summary?.total_profit_rate || 0, 2) }}%
+          </div>
+        </div>
       </el-col>
     </el-row>
 
-    <el-card class="fund-list-card">
-      <template #header>
-        <div class="card-header">
-          <span>我的基金 ({{ summary?.fund_count || 0 }})</span>
-          <div>
-            <el-tag v-if="autoRefresh" type="success" style="margin-right: 10px;">
-              自动刷新中 ({{ lastUpdateTime ? lastUpdateTime : '--:--:--' }})
-            </el-tag>
-            <el-button @click="toggleAutoRefresh" style="margin-right: 10px;">
-              {{ autoRefresh ? '关闭自动刷新' : '开启自动刷新' }}
-            </el-button>
-            <el-button type="primary" @click="handleSyncAll" :loading="syncing">
-              <el-icon><Refresh /></el-icon> 同步数据
-            </el-button>
+    <!-- Fund List Card -->
+    <div class="glass-card-enhanced p-8">
+      <!-- Card Header -->
+      <div class="card-header flex items-center justify-between mb-6">
+        <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-3">
+            <span class="text-sci-cyan text-2xl">⚡</span>
+            <h3 class="text-xl font-tech font-semibold text-white tracking-wide">我的基金</h3>
           </div>
+          <span class="px-3 py-1.5 bg-sci-cyan/15 border border-sci-cyan/40 rounded-lg text-sci-cyan text-sm font-data tracking-wider">
+            {{ summary?.fund_count || 0 }}
+          </span>
         </div>
-      </template>
-      <el-table :data="summary?.funds || []" stripe>
-        <el-table-column prop="fund_code" label="基金代码" width="120" />
-        <el-table-column prop="fund_name" label="基金名称" />
-        <el-table-column prop="amount" label="持有金额" align="right">
-          <template #default="{ row }">
-            ¥{{ formatNumber(row.amount) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="shares" label="持有份额" align="right">
-          <template #default="{ row }">
-            {{ formatNumber(row.shares, 4) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="cost_price" label="成本单价" align="right">
-          <template #default="{ row }">
-            ¥{{ formatNumber(row.cost_price, 4) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="cost" label="总成本" align="right">
-          <template #default="{ row }">
-            ¥{{ formatNumber(row.cost) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="latest_nav" label="最新净值" align="right" width="120">
-          <template #default="{ row }">
-            <span v-if="row.latest_nav" style="color: #909399; font-size: 12px;">正式</span>
-            <div>¥{{ formatNumber(row.latest_nav, 4) }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="实时数据" align="right" width="160">
-          <template #default="{ row }">
-            <!-- 场内基金 -->
-            <div v-if="row.is_listed_fund && row.current_price">
-              <el-tag size="small" type="warning">场内</el-tag>
-              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-weight: bold; margin-top: 5px;">
-                ¥{{ formatNumber(row.current_price, 4) }}
-              </div>
-              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 12px;">
-                {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
-              </div>
-            </div>
+        <div class="flex items-center space-x-4">
+          <div v-if="autoRefresh" class="flex items-center space-x-2 px-4 py-2
+                        bg-sci-success/10 border border-sci-success/40 rounded-lg
+                        backdrop-blur-sm">
+            <span class="status-pulse w-2 h-2 bg-sci-success rounded-full"></span>
+            <span class="text-xs text-sci-success font-data tracking-wider">
+              自动刷新中 ({{ lastUpdateTime ? lastUpdateTime : '--:--:--' }})
+            </span>
+          </div>
+          <button @click="toggleAutoRefresh"
+                  class="btn-tech text-sm px-4 py-2 font-modern">
+            {{ autoRefresh ? '关闭自动刷新' : '开启自动刷新' }}
+          </button>
+          <button @click="handleSyncAll"
+                  :disabled="syncing"
+                  class="btn-tech-primary text-sm px-4 py-2 flex items-center space-x-2 font-modern"
+                  :class="syncing ? 'opacity-50 cursor-not-allowed' : ''">
+            <span v-if="!syncing">⟳</span>
+            <span v-else class="animate-spin">⟳</span>
+            <span>同步数据</span>
+          </button>
+        </div>
+      </div>
 
-            <!-- 场外基金 -->
-            <div v-else-if="row.increase_rate !== null">
-              <el-tag size="small" type="info">场外</el-tag>
-              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-weight: bold; margin-top: 5px;">
-                {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
-              </div>
-              <div style="font-size: 12px; color: #909399;">估算</div>
-            </div>
-
-            <div v-else style="color: #ccc; font-size: 12px;">-</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="市值(实时)" align="right" width="140">
-          <template #default="{ row }">
-            <span style="font-weight: bold;">
-              ¥{{ formatNumber(row.realtime_market_value || row.market_value) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="profit" label="收益" align="right">
-          <template #default="{ row }">
-            <span :class="getProfitClass(row.profit)">
-              {{ row.profit >= 0 ? '+' : '' }}¥{{ formatNumber(row.profit) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="profit_rate" label="收益率" align="right">
-          <template #default="{ row }">
-            <span :class="getProfitClass(row.profit_rate)">
-              {{ row.profit_rate >= 0 ? '+' : '' }}{{ formatNumber(row.profit_rate, 2) }}%
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" link @click="$router.push(`/funds/${row.fund_id}`)">
-              详情
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+      <!-- Sci-Fi Table -->
+      <div class="overflow-x-auto">
+        <table class="table-sci-fi">
+          <thead>
+            <tr>
+              <th>基金代码</th>
+              <th>基金名称</th>
+              <th class="text-right">持有金额</th>
+              <th class="text-right">持有份额</th>
+              <th class="text-right">成本单价</th>
+              <th class="text-right">总成本</th>
+              <th class="text-right">最新净值</th>
+              <th class="text-right">实时数据</th>
+              <th class="text-right">市值(实时)</th>
+              <th class="text-right">收益</th>
+              <th class="text-right">收益率</th>
+              <th class="text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in summary?.funds || []" :key="row.fund_id" class="table-row">
+              <td class="font-mono-number text-sci-cyan">{{ row.fund_code }}</td>
+              <td>{{ row.fund_name }}</td>
+              <td class="text-right font-mono-number text-gray-300">¥{{ formatNumber(row.amount) }}</td>
+              <td class="text-right font-mono-number text-gray-300">{{ formatNumber(row.shares, 4) }}</td>
+              <td class="text-right font-mono-number text-gray-400">¥{{ formatNumber(row.cost_price, 4) }}</td>
+              <td class="text-right font-mono-number text-gray-400">¥{{ formatNumber(row.cost) }}</td>
+              <td class="text-right">
+                <div v-if="row.latest_nav" class="space-y-1">
+                  <span class="text-xs text-sci-cyan/60 block">正式</span>
+                  <div class="font-mono-number">¥{{ formatNumber(row.latest_nav, 4) }}</div>
+                </div>
+                <span v-else class="text-gray-500">-</span>
+              </td>
+              <td class="text-right">
+                <!-- 场内基金 -->
+                <div v-if="row.is_listed_fund && row.current_price">
+                  <span class="tag-tech-gold text-xs">场内</span>
+                  <div class="mt-1 font-mono-number font-bold"
+                       :class="row.increase_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                    ¥{{ formatNumber(row.current_price, 4) }}
+                  </div>
+                  <div class="text-xs font-mono-number"
+                       :class="row.increase_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                    {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
+                  </div>
+                </div>
+                <!-- 场外基金 -->
+                <div v-else-if="row.increase_rate !== null">
+                  <span class="tag-tech-cyan text-xs">场外</span>
+                  <div class="mt-1 font-mono-number text-base font-bold"
+                       :class="row.increase_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                    {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
+                  </div>
+                  <div class="text-xs text-gray-500">估算</div>
+                </div>
+                <div v-else class="text-gray-500 text-xs">-</div>
+              </td>
+              <td class="text-right">
+                <span class="font-mono-number font-bold text-sci-gold">
+                  ¥{{ formatNumber(row.realtime_market_value || row.market_value) }}
+                </span>
+              </td>
+              <td class="text-right">
+                <span class="font-mono-number"
+                      :class="getProfitClass(row.profit)">
+                  {{ row.profit >= 0 ? '+' : '' }}¥{{ formatNumber(row.profit) }}
+                </span>
+              </td>
+              <td class="text-right">
+                <span class="font-mono-number"
+                      :class="getProfitClass(row.profit_rate)">
+                  {{ row.profit_rate >= 0 ? '+' : '' }}{{ formatNumber(row.profit_rate, 2) }}%
+                </span>
+              </td>
+              <td class="text-right">
+                <router-link :to="`/funds/${row.fund_id}`"
+                             class="text-sci-cyan hover:text-sci-cyan/80 transition-colors">
+                  详情 →
+                </router-link>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { syncAllNav, getBatchRealtimeValuation } from '@/api/fund'
-import { Refresh } from '@element-plus/icons-vue'
+import { formatNumber } from '@/utils/helpers'
 import dayjs from 'dayjs'
 
+const router = useRouter()
 const fundStore = useFundStore()
 const syncing = ref(false)
 const summary = ref(null)
@@ -159,15 +238,10 @@ const autoRefresh = ref(true)
 const refreshInterval = ref(null)
 const lastUpdateTime = ref('')
 
-const formatNumber = (num, decimals = 2) => {
-  if (num === null || num === undefined) return '0.00'
-  return Number(num).toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-}
-
 const getProfitClass = (value) => {
   if (value > 0) return 'profit-positive'
   if (value < 0) return 'profit-negative'
-  return ''
+  return 'profit-neutral'
 }
 
 const fetchSummaryWithRealtime = async () => {
@@ -273,61 +347,76 @@ const handleSyncAll = async () => {
 }
 
 .summary-row {
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
-.summary-card {
-  border-radius: 8px;
-  overflow: hidden;
+.summary-col {
+  /* No custom margin - let Element Plus gutter handle spacing */
 }
 
-.card-content {
-  text-align: center;
+.glass-card-enhanced {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover:hover {
+  transform: translateY(-6px) scale(1.01);
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.6),
+    0 0 40px rgba(0, 212, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 .card-label {
-  font-size: 14px;
-  color: #909399;
-  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .card-value {
-  font-size: 24px;
-  font-weight: bold;
-  color: #303133;
+  font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+  font-size: 1.75rem;
+  line-height: 1.2;
 }
 
-.profit-positive .card-value {
-  color: #f56c6c;
-}
-
-.profit-negative .card-value {
-  color: #67c23a;
-}
-
-.fund-list-card {
-  border-radius: 8px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
+/* Enhanced profit/loss colors with new neon palette */
 .profit-positive {
-  color: #f56c6c;
+  color: #22c55e;
+  text-shadow: 0 0 25px rgba(34, 197, 94, 0.6);
 }
 
 .profit-negative {
-  color: #67c23a;
+  color: #ef4444;
+  text-shadow: 0 0 25px rgba(239, 68, 68, 0.6);
 }
 
-.text-red {
-  color: #f56c6c;
+.profit-neutral {
+  color: #9ca3af;
 }
 
-.text-green {
-  color: #67c23a;
+/* Table Row Hover Animation */
+.table-row {
+  transition: all 0.2s ease;
+}
+
+.table-row:hover {
+  background: rgba(6, 182, 212, 0.05);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .summary-col {
+    /* Let Element Plus handle spacing */
+  }
+}
+
+@media (max-width: 768px) {
+  .summary-col {
+    /* Let Element Plus handle spacing */
+  }
+
+  .card-value {
+    font-size: 1.25rem;
+  }
 }
 </style>

@@ -1,134 +1,234 @@
 <template>
-  <div class="fund-detail" v-loading="loading">
+  <div class="fund-detail space-y-6" v-loading="loading">
+    <!-- Info Cards Row -->
     <el-row :gutter="20" v-if="fund">
-      <el-col :span="8">
-        <el-card>
-          <template #header>基金信息</template>
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="基金代码">{{ fund.fund_code }}</el-descriptions-item>
-            <el-descriptions-item label="基金名称">{{ fund.fund_name }}</el-descriptions-item>
-            <el-descriptions-item label="基金类型">{{ fund.fund_type }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{ formatDate(fund.created_at) }}</el-descriptions-item>
-          </el-descriptions>
-        </el-card>
+      <!-- Fund Info Card -->
+      <el-col :span="8" class="info-col">
+        <div class="glass-card card-hover p-5">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-2">
+              <span class="text-sci-cyan text-lg">📁</span>
+              <h4 class="text-white font-semibold">基金信息</h4>
+            </div>
+          </div>
+          <div class="space-y-3">
+            <div class="flex justify-between">
+              <span class="text-gray-400 text-sm">基金代码</span>
+              <span class="font-mono-number text-sci-cyan">{{ fund.fund_code }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400 text-sm">基金名称</span>
+              <span class="text-gray-200">{{ fund.fund_name }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400 text-sm">基金类型</span>
+              <span class="tag-tech-cyan text-xs">{{ fund.fund_type }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400 text-sm">创建时间</span>
+              <span class="text-gray-400 text-sm">{{ formatDate(fund.created_at) }}</span>
+            </div>
+          </div>
+        </div>
       </el-col>
-      <el-col :span="8">
-        <el-card>
-          <template #header>持仓信息</template>
-          <el-descriptions :column="1" border v-if="holding">
-            <el-descriptions-item label="持有金额">¥{{ formatNumber(holding.amount) }}</el-descriptions-item>
-            <el-descriptions-item label="持有份额">{{ formatNumber(holding.shares, 4) }}</el-descriptions-item>
-            <el-descriptions-item label="成本单价">¥{{ formatNumber(holding.cost_price, 4) }}</el-descriptions-item>
-            <el-descriptions-item label="总成本">¥{{ formatNumber(holding.cost) }}</el-descriptions-item>
-          </el-descriptions>
-          <el-empty v-else description="暂无持仓数据" />
-        </el-card>
+
+      <!-- Holding Info Card -->
+      <el-col :span="8" class="info-col">
+        <div class="glass-card card-hover p-5">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-2">
+              <span class="text-sci-gold text-lg">💼</span>
+              <h4 class="text-white font-semibold">持仓信息</h4>
+            </div>
+          </div>
+          <div v-if="holding" class="space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400 text-sm">持有金额</span>
+              <span class="font-mono-number text-gray-200">¥{{ formatNumber(holding.amount) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400 text-sm">持有份额</span>
+              <span class="font-mono-number text-gray-200">{{ formatNumber(holding.shares, 4) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400 text-sm">成本单价</span>
+              <span class="font-mono-number text-gray-300">¥{{ formatNumber(holding.cost_price, 4) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400 text-sm">总成本</span>
+              <span class="font-mono-number text-sci-cyan font-bold">¥{{ formatNumber(holding.cost) }}</span>
+            </div>
+          </div>
+          <div v-else class="text-center py-8">
+            <span class="text-gray-500">暂无持仓数据</span>
+          </div>
+        </div>
       </el-col>
-      <el-col :span="8">
-        <el-card>
-          <template #header>最新净值</template>
-          <el-descriptions :column="1" border v-if="latestNav">
-            <el-descriptions-item label="净值日期">{{ formatDate(latestNav.date) }}</el-descriptions-item>
-            <el-descriptions-item label="单位净值">¥{{ formatNumber(latestNav.unit_nav, 4) }}</el-descriptions-item>
-            <el-descriptions-item label="累计净值">¥{{ formatNumber(latestNav.accumulated_nav, 4) }}</el-descriptions-item>
-            <el-descriptions-item label="日增长率">
-              <span :class="latestNav.daily_growth >= 0 ? 'text-red' : 'text-green'">
+
+      <!-- Latest NAV Card -->
+      <el-col :span="8" class="info-col">
+        <div class="glass-card card-hover p-5">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-2">
+              <span class="text-sci-success text-lg">📊</span>
+              <h4 class="text-white font-semibold">最新净值</h4>
+            </div>
+          </div>
+          <div v-if="latestNav" class="space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400 text-sm">净值日期</span>
+              <span class="text-gray-400 text-sm">{{ formatDate(latestNav.date) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400 text-sm">单位净值</span>
+              <span class="font-mono-number text-gray-200">¥{{ formatNumber(latestNav.unit_nav, 4) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400 text-sm">累计净值</span>
+              <span class="font-mono-number text-gray-300">¥{{ formatNumber(latestNav.accumulated_nav, 4) }}</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-gray-400 text-sm">日增长率</span>
+              <span class="font-mono-number font-bold"
+                    :class="latestNav.daily_growth >= 0 ? 'text-sci-success' : 'text-sci-danger'">
                 {{ latestNav.daily_growth >= 0 ? '+' : '' }}{{ formatNumber(latestNav.daily_growth * 100, 2) }}%
               </span>
-            </el-descriptions-item>
-          </el-descriptions>
-          <el-empty v-else description="暂无净值数据" />
-        </el-card>
+            </div>
+          </div>
+          <div v-else class="text-center py-8">
+            <span class="text-gray-500">暂无净值数据</span>
+          </div>
+        </div>
       </el-col>
     </el-row>
 
-    <!-- 新增：实时涨跌幅卡片 -->
-    <el-row :gutter="20" style="margin-top: 20px;" v-if="fund">
+    <!-- Realtime Data Card -->
+    <el-row :gutter="20" v-if="fund">
       <el-col :span="24">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <span>
-                {{ realtimeData?.is_listed_fund ? '实时股价' : '实时估值' }}
-              </span>
-              <div>
-                <el-tag v-if="realtimeData?.is_listed_fund" type="warning" style="margin-right: 10px;">
-                  场内基金
-                </el-tag>
-                <el-tag v-else type="info" style="margin-right: 10px;">
-                  场外基金
-                </el-tag>
-                <el-tag v-if="realtimeData?.is_trading_time" type="success" style="margin-right: 10px;">盘中实时</el-tag>
-                <el-tag v-else type="info">非交易时间</el-tag>
-                <el-button @click="toggleAutoRefresh" style="margin-left: 10px;">
-                  {{ autoRefresh ? '关闭自动刷新' : '开启自动刷新' }}
-                </el-button>
+        <div class="glass-card p-6">
+          <!-- Card Header -->
+          <div class="card-header flex items-center justify-between mb-6">
+            <div class="flex items-center space-x-3">
+              <div class="flex items-center space-x-2">
+                <span class="text-lg">{{ realtimeData?.is_listed_fund ? '📈' : '📊' }}</span>
+                <h3 class="text-lg font-semibold text-white">
+                  {{ realtimeData?.is_listed_fund ? '实时股价' : '实时估值' }}
+                </h3>
+              </div>
+              <div class="flex items-center space-x-2">
+                <span v-if="realtimeData?.is_listed_fund" class="tag-tech-gold text-xs">场内基金</span>
+                <span v-else class="tag-tech-cyan text-xs">场外基金</span>
+                <span v-if="realtimeData?.is_trading_time" class="tag-tech-green text-xs">盘中实时</span>
+                <span v-else class="tag-tech text-xs border-gray-500 text-gray-400">非交易时间</span>
               </div>
             </div>
-          </template>
-          <div v-if="realtimeData && (realtimeData.increase_rate !== null || realtimeData.current_price)">
-            <el-descriptions :column="2" border>
-
-              <!-- 场内基金：显示实时股价 -->
-              <el-descriptions-item v-if="realtimeData.is_listed_fund" label="实时股价">
-                <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 28px; font-weight: bold;">
-                  ¥{{ formatNumber(realtimeData.current_price, 4) }}
-                </span>
-              </el-descriptions-item>
-
-              <!-- 场外基金：显示估算涨跌幅 -->
-              <el-descriptions-item v-else label="估算涨跌幅">
-                <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 28px; font-weight: bold;">
-                  {{ realtimeData.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(realtimeData.increase_rate, 2) }}%
-                </span>
-              </el-descriptions-item>
-
-              <el-descriptions-item label="涨跌幅">
-                <span :class="realtimeData.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 20px; font-weight: bold;">
-                  {{ realtimeData.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(realtimeData.increase_rate, 2) }}%
-                </span>
-                <div style="font-size: 12px; color: #909399; margin-top: 5px;">
-                  {{ realtimeData.is_listed_fund ? '实际涨跌' : '估算涨跌' }}
-                </div>
-              </el-descriptions-item>
-
-              <el-descriptions-item label="数据更新时间">
-                {{ formatDateTime(realtimeData.estimate_time) }}
-              </el-descriptions-item>
-
-              <el-descriptions-item label="最新正式净值">
-                <span v-if="realtimeData.latest_nav_unit_nav">
-                  ¥{{ formatNumber(realtimeData.latest_nav_unit_nav, 4) }}
-                  <span style="color: #909399; font-size: 12px; margin-left: 5px;">
-                    ({{ formatDate(realtimeData.latest_nav_date) }})
-                  </span>
-                </span>
-                <span v-else>-</span>
-              </el-descriptions-item>
-
-              <el-descriptions-item label="自动刷新">
-                <el-tag :type="autoRefresh ? 'success' : 'info'">
+            <div class="flex items-center space-x-3">
+              <div class="flex items-center space-x-2 px-3 py-1.5
+                            bg-navy-900/50 border border-sci-cyan/20 rounded-lg">
+                <span class="w-1.5 h-1.5 rounded-full mr-2"
+                      :class="autoRefresh ? 'bg-sci-success animate-pulse' : 'bg-gray-500'"></span>
+                <span class="text-xs text-gray-400">
                   {{ autoRefresh ? '已开启 (每60秒)' : '已关闭' }}
-                </el-tag>
-              </el-descriptions-item>
-            </el-descriptions>
+                </span>
+              </div>
+              <button @click="toggleAutoRefresh" class="btn-tech text-sm">
+                {{ autoRefresh ? '关闭自动刷新' : '开启自动刷新' }}
+              </button>
+            </div>
           </div>
-          <el-empty v-else description="当前非交易时间，暂无实时数据" />
-        </el-card>
+
+          <!-- Realtime Data Content -->
+          <div v-if="realtimeData && (realtimeData.increase_rate !== null || realtimeData.current_price)">
+            <el-row :gutter="20">
+              <!-- 场内基金：实时股价 -->
+              <el-col v-if="realtimeData.is_listed_fund" :span="6">
+                <div class="text-center p-4 bg-navy-900/30 rounded-lg border border-sci-cyan/10">
+                  <div class="text-gray-400 text-sm mb-2">实时股价</div>
+                  <div class="stat-value-glow text-3xl font-bold font-mono-number"
+                       :class="realtimeData.increase_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                    ¥{{ formatNumber(realtimeData.current_price, 4) }}
+                  </div>
+                </div>
+              </el-col>
+
+              <!-- 场外基金：估算涨跌幅 -->
+              <el-col v-else :span="6">
+                <div class="text-center p-4 bg-navy-900/30 rounded-lg border border-sci-cyan/10">
+                  <div class="text-gray-400 text-sm mb-2">估算涨跌幅</div>
+                  <div class="stat-value-glow text-3xl font-bold font-mono-number"
+                       :class="realtimeData.increase_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                    {{ realtimeData.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(realtimeData.increase_rate, 2) }}%
+                  </div>
+                </div>
+              </el-col>
+
+              <!-- 涨跌幅 -->
+              <el-col :span="6">
+                <div class="text-center p-4 bg-navy-900/30 rounded-lg border border-sci-cyan/10">
+                  <div class="text-gray-400 text-sm mb-2">涨跌幅</div>
+                  <div class="text-2xl font-bold font-mono-number"
+                       :class="realtimeData.increase_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                    {{ realtimeData.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(realtimeData.increase_rate, 2) }}%
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">
+                    {{ realtimeData.is_listed_fund ? '实际涨跌' : '估算涨跌' }}
+                  </div>
+                </div>
+              </el-col>
+
+              <!-- 数据更新时间 -->
+              <el-col :span="6">
+                <div class="text-center p-4 bg-navy-900/30 rounded-lg border border-sci-cyan/10">
+                  <div class="text-gray-400 text-sm mb-2">数据更新时间</div>
+                  <div class="text-lg font-mono-number text-gray-200">
+                    {{ formatDateTime(realtimeData.estimate_time) }}
+                  </div>
+                </div>
+              </el-col>
+
+              <!-- 最新正式净值 -->
+              <el-col :span="6">
+                <div class="text-center p-4 bg-navy-900/30 rounded-lg border border-sci-cyan/10">
+                  <div class="text-gray-400 text-sm mb-2">最新正式净值</div>
+                  <div v-if="realtimeData.latest_nav_unit_nav" class="text-lg font-mono-number text-gray-200">
+                    ¥{{ formatNumber(realtimeData.latest_nav_unit_nav, 4) }}
+                    <div class="text-xs text-sci-cyan/60 mt-1">
+                      {{ formatDate(realtimeData.latest_nav_date) }}
+                    </div>
+                  </div>
+                  <span v-else class="text-gray-500">-</span>
+                </div>
+              </el-col>
+            </el-row>
+          </div>
+          <div v-else class="text-center py-12">
+            <span class="text-gray-500 text-lg">当前非交易时间，暂无实时数据</span>
+          </div>
+        </div>
       </el-col>
     </el-row>
 
-    <el-card style="margin-top: 20px;">
-      <template #header>
-        <div class="card-header">
-          <span>收益趋势</span>
-          <el-button type="primary" @click="handleSync" :loading="syncing">
-            <el-icon><Refresh /></el-icon> 同步数据
-          </el-button>
+    <!-- Chart Card -->
+    <div class="glass-card p-6">
+      <!-- Card Header -->
+      <div class="card-header flex items-center justify-between mb-6">
+        <div class="flex items-center space-x-2">
+          <span class="text-sci-cyan text-lg">📈</span>
+          <h3 class="text-lg font-semibold text-white">收益趋势</h3>
         </div>
-      </template>
-      <div ref="chartRef" style="height: 400px;"></div>
-    </el-card>
+        <button @click="handleSync"
+                :disabled="syncing"
+                class="btn-tech-primary text-sm flex items-center space-x-2"
+                :class="syncing ? 'opacity-50 cursor-not-allowed' : ''">
+          <span v-if="!syncing">⟳</span>
+          <span v-else class="animate-spin">⟳</span>
+          <span>同步数据</span>
+        </button>
+      </div>
+
+      <!-- Chart Container -->
+      <div ref="chartRef" class="chart-container" style="height: 400px;"></div>
+    </div>
   </div>
 </template>
 
@@ -137,8 +237,8 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import * as echarts from 'echarts'
 import { getFund, getHolding, getLatestNav, getPnLChartData, syncFund, getRealtimeValuation } from '@/api/fund'
+import { formatNumber, formatDate, formatDateTime } from '@/utils/helpers'
 import dayjs from 'dayjs'
-import { Refresh } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const fundId = ref(route.params.id)
@@ -154,19 +254,6 @@ const chartRef = ref(null)
 // 自动刷新相关
 const autoRefresh = ref(true)
 const refreshInterval = ref(null)
-
-const formatNumber = (num, decimals = 2) => {
-  if (num === null || num === undefined || isNaN(num)) return '0.00'
-  return Number(num).toFixed(decimals)
-}
-
-const formatDate = (date) => {
-  return dayjs(date).format('YYYY-MM-DD')
-}
-
-const formatDateTime = (datetime) => {
-  return dayjs(datetime).format('YYYY-MM-DD HH:mm:ss')
-}
 
 const fetchData = async () => {
   loading.value = true
@@ -190,19 +277,6 @@ const fetchRealtimeData = async () => {
     // 非交易时间或获取失败时保持原有数据或设为null
     console.error('获取实时估值失败:', error)
   }
-}
-
-const getDiffClass = (data) => {
-  if (!data.latest_nav_unit_nav || !data.realtime_nav) return ''
-  const diff = data.realtime_nav - data.latest_nav_unit_nav
-  return diff > 0 ? 'text-red' : diff < 0 ? 'text-green' : ''
-}
-
-const getDiffPercent = (data) => {
-  if (!data.latest_nav_unit_nav || !data.realtime_nav) return '0.00'
-  const diff = data.realtime_nav - data.latest_nav_unit_nav
-  const percent = (diff / data.latest_nav_unit_nav) * 100
-  return (percent >= 0 ? '+' : '') + percent.toFixed(2)
 }
 
 const toggleAutoRefresh = () => {
@@ -237,14 +311,28 @@ const initChart = async () => {
   const chart = echarts.init(chartRef.value)
 
   const option = {
+    backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
       axisPointer: {
-        type: 'cross'
+        type: 'cross',
+        crossStyle: {
+          color: '#06b6d4'
+        }
+      },
+      backgroundColor: 'rgba(15, 23, 42, 0.9)',
+      borderColor: 'rgba(6, 182, 212, 0.3)',
+      borderWidth: 1,
+      textStyle: {
+        color: '#e2e8f0'
       }
     },
     legend: {
-      data: ['市值', '收益', '收益率']
+      data: ['市值', '收益', '收益率'],
+      textStyle: {
+        color: '#94a3b8'
+      },
+      selectedMode: true
     },
     grid: {
       left: '3%',
@@ -255,18 +343,56 @@ const initChart = async () => {
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: chartData.dates
+      data: chartData.dates,
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(6, 182, 212, 0.3)'
+        }
+      },
+      axisLabel: {
+        color: '#94a3b8'
+      }
     },
     yAxis: [
       {
         type: 'value',
         name: '金额(元)',
-        position: 'left'
+        position: 'left',
+        nameTextStyle: {
+          color: '#94a3b8'
+        },
+        axisLine: {
+          lineStyle: {
+            color: 'rgba(6, 182, 212, 0.3)'
+          }
+        },
+        axisLabel: {
+          color: '#94a3b8'
+        },
+        splitLine: {
+          lineStyle: {
+            color: 'rgba(6, 182, 212, 0.1)'
+          }
+        }
       },
       {
         type: 'value',
         name: '收益率(%)',
-        position: 'right'
+        position: 'right',
+        nameTextStyle: {
+          color: '#94a3b8'
+        },
+        axisLine: {
+          lineStyle: {
+            color: 'rgba(6, 182, 212, 0.3)'
+          }
+        },
+        axisLabel: {
+          color: '#94a3b8'
+        },
+        splitLine: {
+          show: false
+        }
       }
     ],
     series: [
@@ -274,25 +400,107 @@ const initChart = async () => {
         name: '市值',
         type: 'line',
         data: chartData.market_values,
-        smooth: true
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: {
+          color: '#06b6d4',
+          width: 2,
+          shadowColor: 'rgba(6, 182, 212, 0.5)',
+          shadowBlur: 10
+        },
+        itemStyle: {
+          color: '#06b6d4',
+          borderColor: '#06b6d4',
+          borderWidth: 2
+        },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(6, 182, 212, 0.3)' },
+              { offset: 1, color: 'rgba(6, 182, 212, 0.05)' }
+            ]
+          }
+        }
       },
       {
         name: '收益',
         type: 'line',
         data: chartData.profits,
-        smooth: true
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: {
+          color: '#f59e0b',
+          width: 2,
+          shadowColor: 'rgba(245, 158, 11, 0.5)',
+          shadowBlur: 10
+        },
+        itemStyle: {
+          color: '#f59e0b',
+          borderColor: '#f59e0b',
+          borderWidth: 2
+        },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(245, 158, 11, 0.3)' },
+              { offset: 1, color: 'rgba(245, 158, 11, 0.05)' }
+            ]
+          }
+        }
       },
       {
         name: '收益率',
         type: 'line',
         yAxisIndex: 1,
         data: chartData.profit_rates,
-        smooth: true
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: {
+          color: '#22c55e',
+          width: 2,
+          shadowColor: 'rgba(34, 197, 94, 0.5)',
+          shadowBlur: 10
+        },
+        itemStyle: {
+          color: '#22c55e',
+          borderColor: '#22c55e',
+          borderWidth: 2
+        }
       }
     ]
   }
 
   chart.setOption(option)
+
+  // Handle resize
+  const resizeHandler = () => {
+    chart.resize()
+  }
+  window.addEventListener('resize', resizeHandler)
+
+  // Store cleanup
+  const cleanup = () => {
+    window.removeEventListener('resize', resizeHandler)
+    chart.dispose()
+  }
+
+  // Call cleanup on unmount
+  onUnmounted(() => {
+    cleanup()
+  })
 }
 
 const handleSync = async () => {
@@ -322,17 +530,34 @@ onUnmounted(() => {
   padding: 0;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.info-col {
+  /* No custom margin - let Element Plus gutter handle spacing */
 }
 
-.text-red {
-  color: #f56c6c;
+.glass-card {
+  transition: all 0.3s ease;
 }
 
-.text-green {
-  color: #67c23a;
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(6, 182, 212, 0.15),
+              0 0 30px rgba(6, 182, 212, 0.1);
+}
+
+.chart-container {
+  position: relative;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .info-col {
+    /* Let Element Plus handle spacing */
+  }
+}
+
+@media (max-width: 768px) {
+  .info-col {
+    /* Let Element Plus handle spacing */
+  }
 }
 </style>

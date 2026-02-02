@@ -1,118 +1,131 @@
 <template>
-  <div class="fund-list">
-    <el-card>
-      <template #header>
-        <div class="card-header">
-          <span>基金管理</span>
-          <div>
-            <el-tag v-if="autoRefresh" type="success" style="margin-right: 10px;">
-              自动刷新中 ({{ lastUpdateTime ? lastUpdateTime : '--:--:--' }})
-            </el-tag>
-            <el-button @click="toggleAutoRefresh" style="margin-right: 10px;">
-              {{ autoRefresh ? '关闭自动刷新' : '开启自动刷新' }}
-            </el-button>
-            <el-button type="primary" @click="showAddDialog">
-              <el-icon><Plus /></el-icon> 添加基金
-            </el-button>
+  <div class="fund-list space-y-6">
+    <!-- Main Card -->
+    <div class="glass-card p-6">
+      <!-- Card Header -->
+      <div class="card-header flex items-center justify-between mb-6">
+        <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-sci-cyan text-lg">📋</span>
+            <h3 class="text-lg font-semibold text-white">基金管理</h3>
           </div>
         </div>
-      </template>
-
-      <el-table :data="funds" stripe v-loading="loading">
-        <el-table-column prop="fund_code" label="基金名称" width="200">
-          <template #default="{ row }">
-            {{ row.fund_name || row.fund_code }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="fund_type" label="基金类型" width="150" />
-        <el-table-column label="持有金额" align="right" width="150">
-          <template #default="{ row }">
-            <span v-if="row.holdings && row.holdings.amount">
-              ¥{{ formatNumber(row.holdings.amount) }}
+        <div class="flex items-center space-x-3">
+          <el-tag v-if="autoRefresh" type="success" class="tag-tech-green">
+            <span class="flex items-center">
+              <span class="w-1.5 h-1.5 bg-sci-success rounded-full mr-2 animate-pulse"></span>
+              自动刷新中 ({{ lastUpdateTime ? lastUpdateTime : '--:--:--' }})
             </span>
-            <span v-else style="color: #ccc;">未设置</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="持有份额" align="right" width="150">
-          <template #default="{ row }">
-            <span v-if="row.holdings && row.holdings.shares">
-              {{ formatNumber(row.holdings.shares) }} 份
-            </span>
-            <span v-else style="color: #ccc;">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="最新净值" align="right" width="120">
-          <template #default="{ row }">
-            <span v-if="row.latest_nav_value" style="color: #909399; font-size: 12px;">
-              正式
-            </span>
-            <div v-if="row.latest_nav_value">
-              ¥{{ formatNumber(row.latest_nav_value, 4) }}
-            </div>
-            <div v-else style="color: #ccc;">-</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="实时数据" align="right" width="180">
-          <template #default="{ row }">
-            <!-- 场内基金：显示实时股价和涨跌 -->
-            <div v-if="row.is_listed_fund && row.current_price">
-              <div style="font-size: 12px; color: #909399; margin-bottom: 4px;">
-                <el-tag size="small" type="warning">场内</el-tag>
-                <span style="margin-left: 5px;">实时股价</span>
-              </div>
-              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 18px; font-weight: bold;">
-                ¥{{ formatNumber(row.current_price, 4) }}
-              </div>
-              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 12px;">
-                {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
-              </div>
-            </div>
+          </el-tag>
+          <button @click="toggleAutoRefresh" class="btn-tech text-sm">
+            {{ autoRefresh ? '关闭自动刷新' : '开启自动刷新' }}
+          </button>
+          <button @click="showAddDialog" class="btn-tech-primary text-sm flex items-center space-x-2">
+            <span>+</span>
+            <span>添加基金</span>
+          </button>
+        </div>
+      </div>
 
-            <!-- 场外基金：显示估算涨跌幅 -->
-            <div v-else-if="row.increase_rate !== null && row.increase_rate !== undefined">
-              <div style="font-size: 12px; color: #909399; margin-bottom: 4px;">
-                <el-tag size="small" type="info">场外</el-tag>
-                <span style="margin-left: 5px;">估算涨跌</span>
-              </div>
-              <div :class="row.increase_rate >= 0 ? 'text-red' : 'text-green'" style="font-size: 20px; font-weight: bold;">
-                {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
-              </div>
-            </div>
-
-            <!-- 无数据 -->
-            <div v-else style="color: #ccc; font-size: 12px;">非交易时间</div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180">
-          <template #default="{ row }">
-            {{ formatDate(row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="350" fixed="right">
-          <template #default="{ row }">
-            <el-button type="success" link @click="showTradeDialog(row)">
-              交易
-            </el-button>
-            <el-button type="primary" link @click="showSetHoldingDialog(row)">
-              设置持仓
-            </el-button>
-            <el-button type="primary" link @click="handleSync(row)" :loading="syncing[row.id]">
-              <el-icon><Refresh /></el-icon> 同步
-            </el-button>
-            <el-button type="primary" link @click="$router.push(`/funds/${row.id}`)">
-              详情
-            </el-button>
-            <el-button type="danger" link @click="handleDelete(row)">
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+      <!-- Sci-Fi Table -->
+      <div class="overflow-x-auto" v-loading="loading">
+        <table class="table-sci-fi">
+          <thead>
+            <tr>
+              <th>基金名称</th>
+              <th>基金类型</th>
+              <th class="text-right">持有金额</th>
+              <th class="text-right">持有份额</th>
+              <th class="text-right">最新净值</th>
+              <th class="text-right">实时数据</th>
+              <th>创建时间</th>
+              <th class="text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in funds" :key="row.id" class="table-row">
+              <td class="font-mono-number text-sci-cyan">{{ row.fund_name || row.fund_code }}</td>
+              <td><span class="tag-tech-cyan text-xs">{{ row.fund_type }}</span></td>
+              <td class="text-right font-mono-number">
+                <span v-if="row.holdings && row.holdings.amount" class="text-gray-300">
+                  ¥{{ formatNumber(row.holdings.amount) }}
+                </span>
+                <span v-else class="text-gray-500">未设置</span>
+              </td>
+              <td class="text-right font-mono-number">
+                <span v-if="row.holdings && row.holdings.shares" class="text-gray-300">
+                  {{ formatNumber(row.holdings.shares) }} 份
+                </span>
+                <span v-else class="text-gray-500">-</span>
+              </td>
+              <td class="text-right">
+                <div v-if="row.latest_nav_value">
+                  <span class="text-xs text-sci-cyan/60 block">正式</span>
+                  <div class="font-mono-number">¥{{ formatNumber(row.latest_nav_value, 4) }}</div>
+                </div>
+                <div v-else class="text-gray-500">-</div>
+              </td>
+              <td class="text-right">
+                <!-- 场内基金：显示实时股价和涨跌 -->
+                <div v-if="row.is_listed_fund && row.current_price">
+                  <span class="tag-tech-gold text-xs">场内</span>
+                  <div class="mt-1 font-mono-number text-base font-bold"
+                       :class="row.increase_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                    ¥{{ formatNumber(row.current_price, 4) }}
+                  </div>
+                  <div class="text-xs font-mono-number"
+                       :class="row.increase_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                    {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
+                  </div>
+                </div>
+                <!-- 场外基金：显示估算涨跌幅 -->
+                <div v-else-if="row.increase_rate !== null && row.increase_rate !== undefined">
+                  <span class="tag-tech-cyan text-xs">场外</span>
+                  <div class="mt-1 font-mono-number text-lg font-bold"
+                       :class="row.increase_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                    {{ row.increase_rate >= 0 ? '+' : '' }}{{ formatNumber(row.increase_rate, 2) }}%
+                  </div>
+                </div>
+                <div v-else class="text-gray-500 text-xs">非交易时间</div>
+              </td>
+              <td class="text-gray-400 text-sm">{{ formatDate(row.created_at) }}</td>
+              <td class="text-right">
+                <div class="flex items-center justify-end space-x-2">
+                  <button @click="showTradeDialog(row)"
+                          class="text-sci-success hover:text-sci-success/80 text-sm transition-colors">
+                    交易
+                  </button>
+                  <button @click="showSetHoldingDialog(row)"
+                          class="text-sci-cyan hover:text-sci-cyan/80 text-sm transition-colors">
+                    设置持仓
+                  </button>
+                  <button @click="handleSync(row)"
+                          :disabled="syncing[row.id]"
+                          class="text-sci-gold hover:text-sci-gold/80 text-sm transition-colors
+                                 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span v-if="!syncing[row.id]">⟳ 同步</span>
+                    <span v-else class="animate-spin">⟳ 同步</span>
+                  </button>
+                  <router-link :to="`/funds/${row.id}`"
+                               class="text-sci-cyan hover:text-sci-cyan/80 text-sm transition-colors">
+                    详情
+                  </router-link>
+                  <button @click="handleDelete(row)"
+                          class="text-sci-danger hover:text-sci-danger/80 text-sm transition-colors">
+                    删除
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <!-- Add Fund Dialog -->
-    <el-dialog v-model="addDialogVisible" title="添加基金" width="500px">
-      <el-form :model="fundForm" label-width="100px">
+    <el-dialog v-model="addDialogVisible" title="添加基金" width="500px"
+               class="dialog-sci-fi">
+      <el-form :model="fundForm" label-width="100px" class="form-sci-fi">
         <el-form-item label="基金代码">
           <el-input
             v-model="fundForm.fund_code"
@@ -120,32 +133,38 @@
             @blur="handleFetchFundInfo"
             :disabled="fetchingInfo"
             maxlength="6"
+            class="input-tech"
           />
-          <span v-if="fetchingInfo" style="color: #409eff; font-size: 12px; margin-top: 5px; display: block;">
+          <div v-if="fetchingInfo" class="mt-2 text-sci-cyan text-sm flex items-center">
+            <span class="animate-spin mr-2">⟳</span>
             正在获取基金信息...
-          </span>
+          </div>
         </el-form-item>
         <el-form-item label="基金名称">
-          <el-input v-model="fundForm.fund_name" placeholder="自动获取，可手动修改" />
+          <el-input v-model="fundForm.fund_name" placeholder="自动获取，可手动修改" class="input-tech" />
         </el-form-item>
         <el-form-item label="基金类型">
-          <el-input v-model="fundForm.fund_type" placeholder="自动获取，可手动修改" />
+          <el-input v-model="fundForm.fund_type" placeholder="自动获取，可手动修改" class="input-tech" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="addDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleAdd" :loading="submitting">确定添加</el-button>
+        <button @click="addDialogVisible = false" class="btn-tech">取消</button>
+        <button @click="handleAdd" :disabled="submitting" class="btn-tech-primary">
+          <span v-if="!submitting">确定添加</span>
+          <span v-else class="animate-pulse">添加中...</span>
+        </button>
       </template>
     </el-dialog>
 
     <!-- Set Holding Dialog -->
-    <el-dialog v-model="holdingDialogVisible" title="设置持仓" width="600px">
-      <el-form :model="holdingForm" label-width="120px">
+    <el-dialog v-model="holdingDialogVisible" title="设置持仓" width="600px"
+               class="dialog-sci-fi">
+      <el-form :model="holdingForm" label-width="120px" class="form-sci-fi">
         <el-alert
           title="只需填写持有金额，系统将自动获取最新净值计算份额"
           type="info"
           :closable="false"
-          style="margin-bottom: 20px;"
+          class="alert-sci-fi mb-4"
         />
 
         <el-form-item label="持有金额">
@@ -154,47 +173,54 @@
             :precision="2"
             :min="0"
             placeholder="请输入持有金额"
-            style="width: 200px;"
+            controls-position="right"
+            class="input-tech-number"
           />
-          <span style="margin-left: 10px; color: #909399;">元</span>
+          <span class="ml-2 text-gray-400">元</span>
         </el-form-item>
 
-        <el-divider content-position="left">自动计算结果</el-divider>
+        <div class="border-t border-sci-cyan/20 pt-4 mt-4">
+          <div class="text-sm text-sci-cyan mb-4 flex items-center">
+            <span class="mr-2">⚡</span>
+            <span>自动计算结果</span>
+          </div>
 
-        <el-form-item label="持有份额">
-          <span style="color: #67c23a;">
-            {{ formatNumber(holdingForm.shares, 4) }} 份
-          </span>
-        </el-form-item>
+          <el-form-item label="持有份额">
+            <span class="text-sci-success font-mono-number text-base">
+              {{ formatNumber(holdingForm.shares, 4) }} 份
+            </span>
+          </el-form-item>
 
-        <el-form-item label="成本单价">
-          <span style="color: #67c23a;">
-            ¥{{ formatNumber(holdingForm.cost_price, 4) }}
-          </span>
-        </el-form-item>
+          <el-form-item label="成本单价">
+            <span class="text-sci-success font-mono-number text-base">
+              ¥{{ formatNumber(holdingForm.cost_price, 4) }}
+            </span>
+          </el-form-item>
 
-        <el-form-item label="总成本">
-          <span style="font-size: 18px; font-weight: bold; color: #409eff;">
-            ¥{{ formatNumber(holdingForm.shares * holdingForm.cost_price) }}
-          </span>
-        </el-form-item>
+          <el-form-item label="总成本">
+            <span class="text-xl font-bold text-sci-cyan font-mono-number stat-value-glow">
+              ¥{{ formatNumber(holdingForm.shares * holdingForm.cost_price) }}
+            </span>
+          </el-form-item>
+        </div>
       </el-form>
-
       <template #footer>
-        <el-button @click="holdingDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSaveHolding" :loading="submittingHolding">
-          保存持仓
-        </el-button>
+        <button @click="holdingDialogVisible = false" class="btn-tech">取消</button>
+        <button @click="handleSaveHolding" :disabled="submittingHolding" class="btn-tech-primary">
+          <span v-if="!submittingHolding">保存持仓</span>
+          <span v-else class="animate-pulse">保存中...</span>
+        </button>
       </template>
     </el-dialog>
 
     <!-- Trade Dialog -->
-    <el-dialog v-model="tradeDialogVisible" title="基金交易" width="600px">
-      <el-form :model="tradeForm" label-width="120px">
+    <el-dialog v-model="tradeDialogVisible" title="基金交易" width="600px"
+               class="dialog-sci-fi">
+      <el-form :model="tradeForm" label-width="120px" class="form-sci-fi">
         <el-form-item label="交易类型">
-          <el-radio-group v-model="tradeForm.transaction_type">
-            <el-radio value="buy">买入</el-radio>
-            <el-radio value="sell">卖出</el-radio>
+          <el-radio-group v-model="tradeForm.transaction_type" class="radio-sci-fi">
+            <el-radio value="buy" class="text-gray-300">买入</el-radio>
+            <el-radio value="sell" class="text-gray-300">卖出</el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -205,17 +231,18 @@
               :precision="2"
               :min="0"
               placeholder="请输入买入金额"
-              style="width: 200px;"
+              controls-position="right"
+              class="input-tech-number"
             />
-            <span style="margin-left: 10px; color: #909399;">元</span>
+            <span class="ml-2 text-gray-400">元</span>
           </el-form-item>
         </template>
 
         <template v-if="tradeForm.transaction_type === 'sell'">
           <el-form-item label="卖出方式">
-            <el-radio-group v-model="sellMode">
-              <el-radio value="amount">按金额</el-radio>
-              <el-radio value="shares">按份额</el-radio>
+            <el-radio-group v-model="sellMode" class="radio-sci-fi">
+              <el-radio value="amount" class="text-gray-300">按金额</el-radio>
+              <el-radio value="shares" class="text-gray-300">按份额</el-radio>
             </el-radio-group>
           </el-form-item>
 
@@ -226,10 +253,13 @@
               :min="0"
               :max="maxSellAmount"
               placeholder="请输入卖出金额"
-              style="width: 200px;"
+              controls-position="right"
+              class="input-tech-number"
             />
-            <span style="margin-left: 10px; color: #909399;">元</span>
-            <span style="margin-left: 10px; color: #909399;">最大可卖出: ¥{{ formatNumber(maxSellAmount) }}</span>
+            <span class="ml-2 text-gray-400">元</span>
+            <span class="ml-2 text-sci-cyan/60 text-sm">
+              最大可卖出: ¥{{ formatNumber(maxSellAmount) }}
+            </span>
           </el-form-item>
 
           <el-form-item v-else label="卖出份额">
@@ -239,10 +269,13 @@
               :min="0"
               :max="maxSellShares"
               placeholder="请输入卖出份额"
-              style="width: 200px;"
+              controls-position="right"
+              class="input-tech-number"
             />
-            <span style="margin-left: 10px; color: #909399;">份</span>
-            <span style="margin-left: 10px; color: #909399;">最大可卖出: {{ formatNumber(maxSellShares, 4) }} 份</span>
+            <span class="ml-2 text-gray-400">份</span>
+            <span class="ml-2 text-sci-cyan/60 text-sm">
+              最大可卖出: {{ formatNumber(maxSellShares, 4) }} 份
+            </span>
           </el-form-item>
         </template>
 
@@ -251,22 +284,22 @@
           title="系统将自动获取当日净值计算买入份额"
           type="info"
           :closable="false"
-          style="margin-top: 20px;"
+          class="alert-sci-fi mt-4"
         />
         <el-alert
           v-else
           title="系统将自动获取当日净值，卖出后成本价保持不变"
           type="warning"
           :closable="false"
-          style="margin-top: 20px;"
+          class="alert-sci-fi mt-4"
         />
       </el-form>
-
       <template #footer>
-        <el-button @click="tradeDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleTrade" :loading="submittingTrade">
-          确定
-        </el-button>
+        <button @click="tradeDialogVisible = false" class="btn-tech">取消</button>
+        <button @click="handleTrade" :disabled="submittingTrade" class="btn-tech-primary">
+          <span v-if="!submittingTrade">确定</span>
+          <span v-else class="animate-pulse">处理中...</span>
+        </button>
       </template>
     </el-dialog>
   </div>
@@ -276,8 +309,8 @@
 import { ref, onMounted, onUnmounted, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh } from '@element-plus/icons-vue'
 import { getFunds, createFund, deleteFund, syncFund, getFundInfoByCode, createOrUpdateHolding, buyFund, sellFund, getBatchRealtimeValuation } from '@/api/fund'
+import { formatNumber, formatDate } from '@/utils/helpers'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -575,12 +608,6 @@ const handleTrade = async () => {
   }
 }
 
-// 格式化数字
-const formatNumber = (num, precision = 2) => {
-  if (num === null || num === undefined || isNaN(num)) return '0.00'
-  return Number(num).toFixed(precision).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-}
-
 const handleDelete = async (fund) => {
   try {
     await ElMessageBox.confirm(
@@ -602,10 +629,6 @@ const handleDelete = async (fund) => {
   }
 }
 
-const formatDate = (date) => {
-  return dayjs(date).format('YYYY-MM-DD HH:mm:ss')
-}
-
 onMounted(() => {
   fetchFunds()
   if (autoRefresh.value) {
@@ -623,17 +646,70 @@ onUnmounted(() => {
   padding: 0;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.table-row {
+  transition: all 0.2s ease;
 }
 
-.text-red {
-  color: #f56c6c;
+.table-row:hover {
+  background: rgba(6, 182, 212, 0.05);
 }
 
-.text-green {
-  color: #67c23a;
+/* Dialog Styles */
+.dialog-sci-fi :deep(.el-dialog) {
+  background-color: var(--navy-900-95);
+  border: 1px solid var(--sci-cyan-30);
+  backdrop-filter: blur(24px);
+}
+
+.dialog-sci-fi :deep(.el-dialog__header) {
+  border-bottom: 1px solid var(--sci-cyan-20);
+}
+
+.dialog-sci-fi :deep(.el-dialog__title) {
+  @apply text-white;
+}
+
+.dialog-sci-fi :deep(.el-dialog__body) {
+  @apply text-gray-300;
+}
+
+/* Form Styles */
+.form-sci-fi :deep(.el-form-item__label) {
+  @apply text-gray-300;
+}
+
+.alert-sci-fi {
+  background-color: var(--sci-cyan-10);
+  border: 1px solid var(--sci-cyan-30);
+  color: rgba(0, 212, 255, 0.8);
+}
+
+/* Radio Group */
+.radio-sci-fi :deep(.el-radio__label) {
+  @apply text-gray-300;
+}
+
+.radio-sci-fi :deep(.el-radio__input.is-checked .el-radio__inner) {
+  background-color: var(--sci-cyan);
+  border-color: var(--sci-cyan);
+}
+
+/* Input Number */
+.input-tech-number :deep(.el-input__inner) {
+  background-color: var(--navy-900-50);
+  border: 1px solid var(--sci-cyan-30);
+  color: rgb(243 244 246);
+}
+
+.input-tech-number :deep(.el-input-number__decrease),
+.input-tech-number :deep(.el-input-number__increase) {
+  background-color: var(--navy-800);
+  border: 1px solid var(--sci-cyan-20);
+  color: var(--sci-cyan);
+}
+
+.input-tech-number :deep(.el-input-number__decrease:hover),
+.input-tech-number :deep(.el-input-number__increase:hover) {
+  background-color: var(--sci-cyan-20);
 }
 </style>
