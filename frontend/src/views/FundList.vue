@@ -666,16 +666,16 @@ onUnmounted(() => {
 }
 
 .dialog-sci-fi :deep(.el-dialog__title) {
-  @apply text-white;
+  color: rgb(243 244 246);
 }
 
 .dialog-sci-fi :deep(.el-dialog__body) {
-  @apply text-gray-300;
+  color: rgb(209 213 219);
 }
 
 /* Form Styles */
 .form-sci-fi :deep(.el-form-item__label) {
-  @apply text-gray-300;
+  color: rgb(209 213 219);
 }
 
 .alert-sci-fi {
@@ -686,7 +686,7 @@ onUnmounted(() => {
 
 /* Radio Group */
 .radio-sci-fi :deep(.el-radio__label) {
-  @apply text-gray-300;
+  color: rgb(209 213 219);
 }
 
 .radio-sci-fi :deep(.el-radio__input.is-checked .el-radio__inner) {
