@@ -1,13 +1,13 @@
 <template>
   <div class="fund-list space-y-6">
     <!-- Main Card -->
-    <div class="glass-card p-6">
+    <div class="glass-card p-8">
       <!-- Card Header -->
-      <div class="card-header flex items-center justify-between mb-6">
+      <div class="card-header flex items-center justify-between mb-8">
         <div class="flex items-center space-x-3">
           <div class="flex items-center space-x-2">
-            <span class="text-sci-cyan text-lg">📋</span>
-            <h3 class="text-lg font-semibold text-white">基金管理</h3>
+            <span class="text-sci-cyan text-2xl">📋</span>
+            <h3 class="text-xl font-semibold text-white">基金管理</h3>
           </div>
         </div>
         <div class="flex items-center space-x-3">
@@ -17,10 +17,10 @@
               自动刷新中 ({{ lastUpdateTime ? lastUpdateTime : '--:--:--' }})
             </span>
           </el-tag>
-          <button @click="toggleAutoRefresh" class="btn-tech text-sm">
+          <button @click="toggleAutoRefresh" class="btn-tech">
             {{ autoRefresh ? '关闭自动刷新' : '开启自动刷新' }}
           </button>
-          <button @click="showAddDialog" class="btn-tech-primary text-sm flex items-center space-x-2">
+          <button @click="showAddDialog" class="btn-tech-primary flex items-center space-x-2">
             <span>+</span>
             <span>添加基金</span>
           </button>
@@ -34,16 +34,31 @@
             <tr>
               <th>基金名称</th>
               <th>基金类型</th>
-              <th class="text-right">持有金额</th>
-              <th class="text-right">持有份额</th>
+              <th class="text-right cursor-pointer hover:text-sci-cyan" @click="handleSort('holdings.amount', 'number')">
+                持有金额
+                <span v-if="sortState.key === 'holdings.amount'">
+                  {{ sortState.order === 'desc' ? '↓' : '↑' }}
+                </span>
+              </th>
+              <th class="text-right cursor-pointer hover:text-sci-cyan" @click="handleSort('holdings.shares', 'number')">
+                持有份额
+                <span v-if="sortState.key === 'holdings.shares'">
+                  {{ sortState.order === 'desc' ? '↓' : '↑' }}
+                </span>
+              </th>
               <th class="text-right">最新净值</th>
-              <th class="text-right">实时数据</th>
+              <th class="text-right cursor-pointer hover:text-sci-cyan" @click="handleSort('increase_rate', 'number')">
+                实时数据
+                <span v-if="sortState.key === 'increase_rate'">
+                  {{ sortState.order === 'desc' ? '↓' : '↑' }}
+                </span>
+              </th>
               <th>创建时间</th>
               <th class="text-right">操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in funds" :key="row.id" class="table-row">
+            <tr v-for="row in sortedFunds" :key="row.id" class="table-row">
               <td class="font-mono-number text-sci-cyan">{{ row.fund_name || row.fund_code }}</td>
               <td><span class="tag-tech-cyan text-xs">{{ row.fund_type }}</span></td>
               <td class="text-right font-mono-number">
@@ -90,28 +105,28 @@
               </td>
               <td class="text-gray-400 text-sm">{{ formatDate(row.created_at) }}</td>
               <td class="text-right">
-                <div class="flex items-center justify-end space-x-2">
+                <div class="flex items-center justify-end space-x-3">
                   <button @click="showTradeDialog(row)"
-                          class="text-sci-success hover:text-sci-success/80 text-sm transition-colors">
+                          class="text-sci-success hover:text-sci-success/80 text-base font-medium transition-colors px-3 py-2 rounded hover:bg-sci-success/10">
                     交易
                   </button>
                   <button @click="showSetHoldingDialog(row)"
-                          class="text-sci-cyan hover:text-sci-cyan/80 text-sm transition-colors">
+                          class="text-sci-cyan hover:text-sci-cyan/80 text-base font-medium transition-colors px-3 py-2 rounded hover:bg-sci-cyan/10 hover:bg-sci-cyan/10">
                     设置持仓
                   </button>
                   <button @click="handleSync(row)"
                           :disabled="syncing[row.id]"
-                          class="text-sci-gold hover:text-sci-gold/80 text-sm transition-colors
+                          class="text-sci-gold hover:text-sci-gold/80 text-base font-medium transition-colors px-3 py-2 rounded hover:bg-sci-gold/10
                                  disabled:opacity-50 disabled:cursor-not-allowed">
                     <span v-if="!syncing[row.id]">⟳ 同步</span>
                     <span v-else class="animate-spin">⟳ 同步</span>
                   </button>
                   <router-link :to="`/funds/${row.id}`"
-                               class="text-sci-cyan hover:text-sci-cyan/80 text-sm transition-colors">
+                               class="text-sci-cyan hover:text-sci-cyan/80 text-base font-medium transition-colors px-3 py-2 rounded hover:bg-sci-cyan/10">
                     详情
                   </router-link>
                   <button @click="handleDelete(row)"
-                          class="text-sci-danger hover:text-sci-danger/80 text-sm transition-colors">
+                          class="text-sci-danger hover:text-sci-danger/80 text-base font-medium transition-colors px-3 py-2 rounded hover:bg-sci-danger/10">
                     删除
                   </button>
                 </div>
@@ -127,31 +142,62 @@
                class="dialog-sci-fi">
       <el-form :model="fundForm" label-width="100px" class="form-sci-fi">
         <el-form-item label="基金代码">
-          <el-input
-            v-model="fundForm.fund_code"
-            placeholder="请输入6位基金代码，如：000001"
-            @blur="handleFetchFundInfo"
-            :disabled="fetchingInfo"
-            maxlength="6"
-            class="input-tech"
-          />
-          <div v-if="fetchingInfo" class="mt-2 text-sci-cyan text-sm flex items-center">
-            <span class="animate-spin mr-2">⟳</span>
+          <div class="fund-code-input-wrapper">
+            <el-input
+              v-model="fundForm.fund_code"
+              placeholder="请输入6位基金代码，如：000001"
+              @input="handleFundCodeInput"
+              @keyup.enter="handleManualSearch"
+              :disabled="fetchingInfo"
+              maxlength="6"
+              class="input-tech"
+            />
+            <el-button
+              @click="handleManualSearch"
+              :disabled="fetchingInfo || fundForm.fund_code.length !== 6"
+              :loading="fetchingInfo"
+              class="btn-search"
+              size="large"
+            >
+              查询
+            </el-button>
+          </div>
+
+          <!-- 查询状态提示 -->
+          <div v-if="fetchingInfo" class="query-status querying">
+            <span class="status-icon">⟳</span>
             正在获取基金信息...
+          </div>
+
+          <!-- 成功提示 -->
+          <div v-if="fundInfoLoaded && !fundInfoError" class="query-status success">
+            <span class="status-icon">✓</span>
+            已获取基金信息
+          </div>
+
+          <!-- 错误提示 -->
+          <div v-if="fundInfoError" class="query-status error">
+            <span class="status-icon">⚠</span>
+            未找到基金信息，请手动输入基金名称和类型
           </div>
         </el-form-item>
         <el-form-item label="基金名称">
-          <el-input v-model="fundForm.fund_name" placeholder="自动获取，可手动修改" class="input-tech" />
+          <el-input v-model="fundForm.fund_name" placeholder="自动获取，可手动修改" class="input-tech" :disabled="fetchingInfo" />
         </el-form-item>
         <el-form-item label="基金类型">
-          <el-input v-model="fundForm.fund_type" placeholder="自动获取，可手动修改" class="input-tech" />
+          <el-input v-model="fundForm.fund_type" placeholder="自动获取，可手动修改" class="input-tech" :disabled="fetchingInfo" />
         </el-form-item>
       </el-form>
       <template #footer>
         <button @click="addDialogVisible = false" class="btn-tech">取消</button>
-        <button @click="handleAdd" :disabled="submitting" class="btn-tech-primary">
-          <span v-if="!submitting">确定添加</span>
-          <span v-else class="animate-pulse">添加中...</span>
+        <button
+          @click="handleAdd"
+          :disabled="submitting || fetchingInfo || (fundInfoError && !fundForm.fund_name)"
+          class="btn-tech-primary"
+        >
+          <span v-if="!submitting && !fetchingInfo">确认添加</span>
+          <span v-else-if="fetchingInfo">加载中...</span>
+          <span v-else>添加中...</span>
         </button>
       </template>
     </el-dialog>
@@ -310,7 +356,7 @@ import { ref, onMounted, onUnmounted, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getFunds, createFund, deleteFund, syncFund, getFundInfoByCode, createOrUpdateHolding, buyFund, sellFund, getBatchRealtimeValuation } from '@/api/fund'
-import { formatNumber, formatDate } from '@/utils/helpers'
+import { formatNumber, formatDate, sortArray } from '@/utils/helpers'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -320,6 +366,10 @@ const syncing = ref({})
 const addDialogVisible = ref(false)
 const submitting = ref(false)
 const fetchingInfo = ref(false)
+const fundInfoLoaded = ref(false)
+const fundInfoError = ref(false)
+const searchDebounceTimer = ref(null)
+const fundInfoCache = ref({})
 const holdingDialogVisible = ref(false)
 const submittingHolding = ref(false)
 const currentFund = ref(null)
@@ -331,6 +381,37 @@ const sellMode = ref('amount')
 const autoRefresh = ref(true)
 const refreshInterval = ref(null)
 const lastUpdateTime = ref('')
+
+// 排序状态
+const sortState = ref({
+  key: null,
+  order: 'desc',
+  type: 'number'
+})
+
+// 排序后的基金列表
+const sortedFunds = computed(() => {
+  if (!sortState.value.key || !funds.value) {
+    return funds.value || []
+  }
+  return sortArray(
+    funds.value,
+    sortState.value.key,
+    sortState.value.order,
+    sortState.value.type
+  )
+})
+
+// 排序切换函数
+const handleSort = (key, type = 'number') => {
+  if (sortState.value.key === key) {
+    sortState.value.order = sortState.value.order === 'desc' ? 'asc' : 'desc'
+  } else {
+    sortState.value.key = key
+    sortState.value.order = 'desc'
+    sortState.value.type = type
+  }
+}
 
 const fundForm = reactive({
   fund_code: '',
@@ -439,12 +520,28 @@ const showAddDialog = () => {
   fundForm.fund_name = ''
   fundForm.fund_type = ''
   addDialogVisible.value = true
+
+  // 重置状态
+  resetFundInfoState()
+  if (searchDebounceTimer.value) {
+    clearTimeout(searchDebounceTimer.value)
+    searchDebounceTimer.value = null
+  }
 }
 
 const handleAdd = async () => {
+  // 验证基金代码
   if (!fundForm.fund_code) {
     ElMessage.warning('请输入基金代码')
     return
+  }
+
+  // 如果查询失败，需要验证手动填写的信息
+  if (fundInfoError.value) {
+    if (!fundForm.fund_name) {
+      ElMessage.warning('请填写基金名称')
+      return
+    }
   }
 
   submitting.value = true
@@ -468,25 +565,83 @@ const handleSync = async (fund) => {
   }
 }
 
-// 自动获取基金信息
-const handleFetchFundInfo = async () => {
+// 输入事件处理 - 防抖触发
+const handleFundCodeInput = () => {
   const code = fundForm.fund_code.trim()
-  if (!code || code.length !== 6) {
+
+  // 清除之前的定时器
+  if (searchDebounceTimer.value) {
+    clearTimeout(searchDebounceTimer.value)
+  }
+
+  // 如果输入达到6位，设置防抖查询
+  if (code.length === 6) {
+    searchDebounceTimer.value = setTimeout(() => {
+      performFundSearch(code)
+    }, 500)
+  } else {
+    // 重置状态
+    resetFundInfoState()
+  }
+}
+
+// 手动查询
+const handleManualSearch = async () => {
+  const code = fundForm.fund_code.trim()
+  if (code.length === 6) {
+    await performFundSearch(code)
+  }
+}
+
+// 执行查询（核心逻辑）
+const performFundSearch = async (code) => {
+  if (fetchingInfo.value) return
+
+  // 检查缓存
+  if (fundInfoCache.value[code]) {
+    setFundInfo(fundInfoCache.value[code])
+    fundInfoLoaded.value = true
+    fundInfoError.value = false
     return
   }
 
   fetchingInfo.value = true
+  fundInfoError.value = false
+
   try {
     const info = await getFundInfoByCode(code)
-    // 自动填充基金名称和类型
-    fundForm.fund_name = info.fund_name || ''
-    fundForm.fund_type = info.fund_type || '开放式基金'
+
+    // 缓存结果
+    fundInfoCache.value[code] = info
+
+    // 设置表单数据
+    setFundInfo(info)
+
+    // 更新状态
+    fundInfoLoaded.value = true
+    fundInfoError.value = false
+
     ElMessage.success('基金信息已自动获取')
   } catch (error) {
-    console.warn('获取基金信息失败，可手动输入', error)
+    console.warn('获取基金信息失败', error)
+    fundInfoError.value = true
+    fundInfoLoaded.value = false
+    ElMessage.warning('未找到基金信息，请手动输入')
   } finally {
     fetchingInfo.value = false
   }
+}
+
+// 设置基金信息
+const setFundInfo = (info) => {
+  fundForm.fund_name = info.fund_name || ''
+  fundForm.fund_type = info.fund_type || '开放式基金'
+}
+
+// 重置基金信息状态
+const resetFundInfoState = () => {
+  fundInfoLoaded.value = false
+  fundInfoError.value = false
 }
 
 // 显示设置持仓对话框
@@ -711,5 +866,65 @@ onUnmounted(() => {
 .input-tech-number :deep(.el-input-number__decrease:hover),
 .input-tech-number :deep(.el-input-number__increase:hover) {
   background-color: var(--sci-cyan-20);
+}
+
+/* 基金代码输入框包装器 */
+.fund-code-input-wrapper {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.fund-code-input-wrapper .el-input {
+  flex: 1;
+}
+
+/* 查询按钮 */
+.btn-search {
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+/* 查询状态提示 */
+.query-status {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.query-status.querying {
+  background-color: rgba(0, 212, 255, 0.1);
+  color: var(--sci-cyan);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+}
+
+.query-status.success {
+  background-color: rgba(34, 197, 94, 0.1);
+  color: var(--sci-success);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.query-status.error {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--sci-danger);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* 状态图标动画 */
+.status-icon {
+  display: inline-block;
+}
+
+.query-status.querying .status-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

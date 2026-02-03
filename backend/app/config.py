@@ -6,9 +6,9 @@ class Settings(BaseSettings):
     """Application settings"""
 
     # Database
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/fund_tracker"
-    DB_USER: str = "postgres"
-    DB_PASSWORD: str = "postgres"
+    DATABASE_URL: str = ""
+    DB_USER: str = ""
+    DB_PASSWORD: str = ""
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
     DB_NAME: str = "fund_tracker"
@@ -20,8 +20,12 @@ class Settings(BaseSettings):
 
     # Scheduler
     SCHEDULER_ENABLED: bool = True
-    SCHEDULER_HOUR: int = 16
+    SCHEDULER_HOUR: int = 0
     SCHEDULER_MINUTE: int = 0
+
+    # Tushare Pro
+    TUSHARE_TOKEN: str = ""
+    TUSHARE_TIMEOUT: int = 10
 
     class Config:
         env_file = ".env"

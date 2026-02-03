@@ -4,7 +4,7 @@
     <el-row :gutter="20" v-if="fund">
       <!-- Fund Info Card -->
       <el-col :span="8" class="info-col">
-        <div class="glass-card card-hover p-5">
+        <div class="glass-card card-hover p-6">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center space-x-2">
               <span class="text-sci-cyan text-lg">📁</span>
@@ -34,7 +34,7 @@
 
       <!-- Holding Info Card -->
       <el-col :span="8" class="info-col">
-        <div class="glass-card card-hover p-5">
+        <div class="glass-card card-hover p-6">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center space-x-2">
               <span class="text-sci-gold text-lg">💼</span>
@@ -67,7 +67,7 @@
 
       <!-- Latest NAV Card -->
       <el-col :span="8" class="info-col">
-        <div class="glass-card card-hover p-5">
+        <div class="glass-card card-hover p-6">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center space-x-2">
               <span class="text-sci-success text-lg">📊</span>
@@ -105,7 +105,7 @@
     <!-- Realtime Data Card -->
     <el-row :gutter="20" v-if="fund">
       <el-col :span="24">
-        <div class="glass-card p-6">
+        <div class="glass-card p-8">
           <!-- Card Header -->
           <div class="card-header flex items-center justify-between mb-6">
             <div class="flex items-center space-x-3">
@@ -208,8 +208,80 @@
       </el-col>
     </el-row>
 
+    <!-- Stock Positions Card -->
+    <div class="glass-card p-8 mt-6" v-if="fund">
+      <div class="card-header flex items-center justify-between mb-6">
+        <div class="flex items-center space-x-2">
+          <span class="text-sci-gold text-lg">📊</span>
+          <h3 class="text-lg font-semibold text-white">股票持仓明细</h3>
+        </div>
+        <button @click="syncStockPositions"
+                :disabled="syncingStock"
+                class="btn-tech text-sm flex items-center space-x-2"
+                :class="syncingStock ? 'opacity-50 cursor-not-allowed' : ''">
+          <span v-if="!syncingStock">⟳</span>
+          <span v-else class="animate-spin">⟳</span>
+          <span>{{ syncingStock ? '同步中...' : '同步持仓' }}</span>
+        </button>
+      </div>
+
+      <!-- Stock Positions Table -->
+      <div v-if="stockPositions.length > 0">
+        <el-table :data="stockPositions" class="table-sci-fi" stripe>
+          <el-table-column prop="stock_code" label="股票代码" width="120" />
+          <el-table-column prop="stock_name" label="股票名称" width="150" />
+          <el-table-column prop="shares" label="持仓股数" align="right">
+            <template #default="{ row }">
+              <span class="font-mono-number">{{ formatNumber(row.shares, 0) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="market_value" label="持仓市值" align="right">
+            <template #default="{ row }">
+              <span class="font-mono-number">¥{{ formatNumber(row.market_value) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="weight" label="占净值比例" align="right" width="120">
+            <template #default="{ row }">
+              <span class="font-mono-number">{{ (row.weight * 100).toFixed(2) }}%</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="report_date" label="报告期" width="120" />
+        </el-table>
+      </div>
+      <div v-else class="text-center py-8">
+        <span class="text-gray-500">暂无持仓数据，请点击"同步持仓"按钮从 Tushare 获取最新持仓</span>
+      </div>
+
+      <!-- Stock-based Realtime Valuation -->
+      <div v-if="stockRealtimeNav" class="mt-6 p-5 bg-navy-900-50 rounded border border-sci-cyan-30">
+        <div class="flex items-center space-x-2 mb-4">
+          <span class="text-sci-cyan text-lg">💹</span>
+          <h4 class="text-lg font-semibold text-white">基于持仓的实时估值</h4>
+          <span class="text-xs text-gray-400 ml-2">由 Tushare 新浪财经源计算</span>
+        </div>
+        <div class="grid grid-cols-2 gap-6">
+          <div class="flex items-center space-x-3">
+            <span class="text-gray-400 text-sm">实时估值：</span>
+            <span class="font-mono-number text-xl font-bold" :class="stockRealtimeNav.increase_rate >= 0 ? 'text-red-400' : 'text-green-400'">
+              {{ stockRealtimeNav.realtime_nav }}
+            </span>
+          </div>
+          <div class="flex items-center space-x-3">
+            <span class="text-gray-400 text-sm">涨跌幅：</span>
+            <span class="font-mono-number text-xl font-bold" :class="stockRealtimeNav.increase_rate >= 0 ? 'text-red-400' : 'text-green-400'">
+              {{ stockRealtimeNav.increase_rate }}%
+            </span>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 mt-3">
+          基于 {{ stockRealtimeNav.stock_count }} 只股票持仓计算
+          · 更新时间：{{ formatDateTime(stockRealtimeNav.update_time) }}
+        </p>
+      </div>
+    </div>
+
     <!-- Chart Card -->
-    <div class="glass-card p-6">
+    <div class="glass-card p-8">
       <!-- Card Header -->
       <div class="card-header flex items-center justify-between mb-6">
         <div class="flex items-center space-x-2">
@@ -236,7 +308,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import * as echarts from 'echarts'
-import { getFund, getHolding, getLatestNav, getPnLChartData, syncFund, getRealtimeValuation } from '@/api/fund'
+import { getFund, getHolding, getLatestNav, getPnLChartData, syncFund, getRealtimeValuation, getFundStockPositions, syncFundStockPositions, getStockRealtimeNav } from '@/api/fund'
 import { formatNumber, formatDate, formatDateTime } from '@/utils/helpers'
 import dayjs from 'dayjs'
 
@@ -251,6 +323,11 @@ const loading = ref(false)
 const syncing = ref(false)
 const chartRef = ref(null)
 
+// 股票持仓相关
+const stockPositions = ref([])
+const stockRealtimeNav = ref(null)
+const syncingStock = ref(false)
+
 // 自动刷新相关
 const autoRefresh = ref(true)
 const refreshInterval = ref(null)
@@ -262,9 +339,52 @@ const fetchData = async () => {
     holding.value = await getHolding(fundId.value).catch(() => null)
     latestNav.value = await getLatestNav(fund.value.fund_code).catch(() => null)
     await fetchRealtimeData()
+    await fetchStockPositions()
+    await fetchStockRealtimeNav()
     await initChart()
   } finally {
     loading.value = false
+  }
+}
+
+// 获取股票持仓
+const fetchStockPositions = async () => {
+  if (!fund.value) return
+  try {
+    const response = await getFundStockPositions(fundId.value)
+    stockPositions.value = response.data || []
+  } catch (error) {
+    console.error('获取持仓失败:', error)
+    stockPositions.value = []
+  }
+}
+
+// 同步股票持仓
+const syncStockPositions = async () => {
+  syncingStock.value = true
+  try {
+    const response = await syncFundStockPositions(fundId.value)
+    if (response.data.success) {
+      await fetchStockPositions()
+      // 同步成功后也获取一次实时估值
+      await fetchStockRealtimeNav()
+    }
+  } catch (error) {
+    console.error('同步持仓失败:', error)
+  } finally {
+    syncingStock.value = false
+  }
+}
+
+// 获取基于股票的实时估值
+const fetchStockRealtimeNav = async () => {
+  if (!fund.value) return
+  try {
+    const response = await getStockRealtimeNav(fund.value.fund_code)
+    stockRealtimeNav.value = response.data
+  } catch (error) {
+    // 如果没有持仓数据或计算失败，不显示错误
+    console.log('基于股票的实时估值不可用:', error.message)
   }
 }
 
@@ -289,9 +409,10 @@ const toggleAutoRefresh = () => {
 }
 
 const startAutoRefresh = () => {
-  // 每60秒刷新一次
+  // 每60秒刷新一次（包括基于股票的实时估值）
   refreshInterval.value = setInterval(() => {
     fetchRealtimeData()
+    fetchStockRealtimeNav()
   }, 60000)
 }
 

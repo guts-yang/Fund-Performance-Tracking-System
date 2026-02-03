@@ -7,7 +7,7 @@ from decimal import Decimal
 from . import models
 from .schemas import (
     FundCreate, FundUpdate, HoldingCreate, HoldingUpdate,
-    NavHistoryCreate, DailyPnLCreate
+    NavHistoryCreate, DailyPnLCreate, FundStockPositionCreate
 )
 from .services.fund_fetcher import FundDataFetcher
 
@@ -310,11 +310,12 @@ def calculate_daily_pnl(db: Session, fund_id: int, holding: models.Holding) -> O
 
 
 def get_portfolio_summary(db: Session) -> dict:
-    """获取投资组合汇总"""
+    """获取投资组合汇总（包含当日收益）"""
     holdings = get_holdings(db)
 
     total_cost = Decimal("0")
     total_market_value = Decimal("0")
+    total_daily_profit = Decimal("0")  # 新增：当日收益
     fund_summaries = []
 
     for holding in holdings:
@@ -332,6 +333,11 @@ def get_portfolio_summary(db: Session) -> dict:
         profit = market_value - cost
         profit_rate = (profit / cost * 100) if cost > 0 else Decimal("0")
 
+        # 计算当日收益
+        daily_pnl = get_daily_pnl(db, holding.fund_id, latest_nav.date) if latest_nav else None
+        daily_profit = daily_pnl.profit if daily_pnl else Decimal("0")
+        total_daily_profit += daily_profit
+
         fund_summaries.append({
             "fund_id": holding.fund_id,
             "fund_code": holding.fund.fund_code,
@@ -343,7 +349,8 @@ def get_portfolio_summary(db: Session) -> dict:
             "latest_nav": latest_nav.unit_nav if latest_nav else None,
             "market_value": market_value,
             "profit": profit,
-            "profit_rate": profit_rate
+            "profit_rate": profit_rate,
+            "daily_profit": daily_profit  # 新增：当日收益
         })
 
     total_profit = total_market_value - total_cost
@@ -354,6 +361,7 @@ def get_portfolio_summary(db: Session) -> dict:
         "total_market_value": total_market_value,
         "total_profit": total_profit,
         "total_profit_rate": total_profit_rate,
+        "total_daily_profit": total_daily_profit,  # 新增：当日总收益
         "fund_count": len(holdings),
         "funds": fund_summaries
     }
@@ -499,3 +507,66 @@ def execute_sell_transaction(db: Session, fund_id: int, amount: Optional[Decimal
     db.commit()
     db.refresh(transaction)
     return transaction
+
+
+# ==================== Fund Stock Position CRUD ====================
+
+def get_fund_stock_positions(
+    db: Session,
+    fund_id: int,
+    report_date: Optional[date] = None
+) -> List[models.FundStockPosition]:
+    """获取基金股票持仓列表"""
+    query = db.query(models.FundStockPosition).filter(
+        models.FundStockPosition.fund_id == fund_id
+    )
+
+    if report_date:
+        query = query.filter(models.FundStockPosition.report_date == report_date)
+
+    return query.order_by(models.FundStockPosition.weight.desc()).all()
+
+
+def create_fund_stock_position(
+    db: Session,
+    position: FundStockPositionCreate,
+    fund_id: int
+) -> models.FundStockPosition:
+    """创建单个基金股票持仓记录"""
+    db_position = models.FundStockPosition(
+        fund_id=fund_id,
+        **position.model_dump()
+    )
+    db.add(db_position)
+    db.commit()
+    db.refresh(db_position)
+    return db_position
+
+
+def update_fund_stock_positions(
+    db: Session,
+    fund_id: int,
+    positions: List[FundStockPositionCreate]
+) -> int:
+    """
+    批量更新基金股票持仓
+
+    先删除该基金的所有持仓记录，然后插入新数据
+    """
+    # 删除旧数据
+    db.query(models.FundStockPosition).filter(
+        models.FundStockPosition.fund_id == fund_id
+    ).delete()
+
+    # 插入新数据
+    count = 0
+    for position in positions:
+        db_position = models.FundStockPosition(
+            fund_id=fund_id,
+            **position.model_dump()
+        )
+        db.add(db_position)
+        count += 1
+
+    db.commit()
+    return count

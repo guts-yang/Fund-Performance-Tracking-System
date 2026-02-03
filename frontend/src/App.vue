@@ -1,5 +1,5 @@
 <template>
-  <div class="app-container min-h-screen bg-sci-midnight bg-hex-grid bg-grid bg-circuit-pattern scrollbar-sci-fi relative overflow-hidden">
+  <div class="app-container min-h-screen bg-sci-midnight bg-hex-grid bg-grid bg-circuit-pattern scrollbar-sci-fi relative overflow-hidden app-background">
     <!-- Binary Code Rain Effect -->
     <div class="binary-rain"></div>
 
@@ -99,6 +99,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { syncAllNav } from '@/api/fund'
 import dayjs from 'dayjs'
 
 const route = useRoute()
@@ -109,11 +110,34 @@ const updateTime = () => {
   currentTime.value = dayjs().format('HH:mm:ss')
 }
 
+// 自动同步功能
+const autoSyncOnLoad = async () => {
+  const lastSync = localStorage.getItem('lastSyncTime')
+  const now = dayjs()
+
+  // 如果从未同步过，或距离上次同步超过 24 小时
+  if (!lastSync || now.diff(dayjs(lastSync), 'hour') >= 24) {
+    console.log('自动同步基金数据...')
+    try {
+      await syncAllNav()
+      localStorage.setItem('lastSyncTime', now.format('YYYY-MM-DD HH:mm:ss'))
+      console.log('自动同步完成')
+    } catch (error) {
+      console.error('自动同步失败:', error)
+    }
+  } else {
+    console.log(`距离上次同步不足24小时，跳过自动同步`)
+  }
+}
+
 let timeInterval = null
 
 onMounted(() => {
   updateTime()
   timeInterval = setInterval(updateTime, 1000)
+
+  // 页面加载时自动同步
+  autoSyncOnLoad()
 })
 
 onUnmounted(() => {
@@ -139,6 +163,15 @@ onUnmounted(() => {
 .app-container {
   position: relative;
   overflow-x: hidden;
+}
+
+/* Background Image */
+.app-background {
+  background-image: url('/figures/background.png');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
 }
 
 /* Header Styles - Enhanced Quantum Look */

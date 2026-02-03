@@ -4,7 +4,7 @@
     <el-row :gutter="24" class="summary-row">
       <!-- Total Cost Card -->
       <el-col :span="6" class="summary-col">
-        <div class="glass-card-enhanced card-hover p-6 relative">
+        <div class="glass-card-enhanced card-hover p-8 relative">
           <div class="flex items-center justify-between mb-4">
             <div class="card-label text-sm text-gray-400 flex items-center font-modern uppercase tracking-wider">
               <span class="w-2 h-2 bg-sci-cyan rounded-full mr-2 animate-pulse"></span>
@@ -24,7 +24,7 @@
 
       <!-- Total Market Value Card -->
       <el-col :span="6" class="summary-col">
-        <div class="glass-card-enhanced card-hover p-6 relative">
+        <div class="glass-card-enhanced card-hover p-8 relative">
           <div class="flex items-center justify-between mb-4">
             <div class="card-label text-sm text-gray-400 flex items-center font-modern uppercase tracking-wider">
               <span class="w-2 h-2 bg-sci-gold rounded-full mr-2 animate-pulse"></span>
@@ -68,27 +68,27 @@
         </div>
       </el-col>
 
-      <!-- Total Profit Rate Card -->
+      <!-- Total Daily Profit Card -->
       <el-col :span="6" class="summary-col">
         <div class="glass-card-enhanced card-hover p-6 relative"
-             :class="getProfitClass(summary?.total_profit_rate)">
+             :class="getProfitClass(summary?.total_daily_profit)">
           <div class="flex items-center justify-between mb-4">
             <div class="card-label text-sm text-gray-400 flex items-center font-modern uppercase tracking-wider">
               <span class="w-2 h-2 rounded-full mr-2 animate-pulse"
-                    :class="summary?.total_profit_rate >= 0 ? 'bg-sci-success' : 'bg-sci-danger'"></span>
-              总收益率
+                    :class="summary?.total_daily_profit >= 0 ? 'bg-sci-success' : 'bg-sci-danger'"></span>
+              当日收益
             </div>
             <div class="card-icon w-10 h-10 flex items-center justify-center
                         bg-navy-800/60 rounded-lg"
-                 :style="'border: 1px solid ' + (summary?.total_profit_rate >= 0 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)')">
-              <span class="text-lg" :class="summary?.total_profit_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
-                %
+                 :style="'border: 1px solid ' + (summary?.total_daily_profit >= 0 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)')">
+              <span class="text-lg" :class="summary?.total_daily_profit >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                📅
               </span>
             </div>
           </div>
           <div class="card-value font-data"
-               :class="getProfitClass(summary?.total_profit_rate)">
-            {{ summary?.total_profit_rate >= 0 ? '+' : '' }}{{ formatNumber(summary?.total_profit_rate || 0, 2) }}%
+               :class="getProfitClass(summary?.total_daily_profit)">
+            {{ summary?.total_daily_profit >= 0 ? '+' : '' }}¥{{ formatNumber(summary?.total_daily_profit || 0) }}
           </div>
         </div>
       </el-col>
@@ -138,12 +138,22 @@
             <tr>
               <th>基金代码</th>
               <th>基金名称</th>
-              <th class="text-right">持有金额</th>
+              <th class="text-right cursor-pointer hover:text-sci-cyan" @click="handleSort('amount', 'number')">
+                持有金额
+                <span v-if="sortState.key === 'amount'">
+                  {{ sortState.order === 'desc' ? '↓' : '↑' }}
+                </span>
+              </th>
               <th class="text-right">持有份额</th>
               <th class="text-right">成本单价</th>
               <th class="text-right">总成本</th>
               <th class="text-right">最新净值</th>
-              <th class="text-right">实时数据</th>
+              <th class="text-right cursor-pointer hover:text-sci-cyan" @click="handleSort('increase_rate', 'number')">
+                实时数据
+                <span v-if="sortState.key === 'increase_rate'">
+                  {{ sortState.order === 'desc' ? '↓' : '↑' }}
+                </span>
+              </th>
               <th class="text-right">市值(实时)</th>
               <th class="text-right">收益</th>
               <th class="text-right">收益率</th>
@@ -151,7 +161,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in summary?.funds || []" :key="row.fund_id" class="table-row">
+            <tr v-for="row in sortedFunds" :key="row.fund_id" class="table-row">
               <td class="font-mono-number text-sci-cyan">{{ row.fund_code }}</td>
               <td>{{ row.fund_name }}</td>
               <td class="text-right font-mono-number text-gray-300">¥{{ formatNumber(row.amount) }}</td>
@@ -221,11 +231,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { syncAllNav, getBatchRealtimeValuation } from '@/api/fund'
-import { formatNumber } from '@/utils/helpers'
+import { formatNumber, sortArray } from '@/utils/helpers'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -237,6 +247,37 @@ const summary = ref(null)
 const autoRefresh = ref(true)
 const refreshInterval = ref(null)
 const lastUpdateTime = ref('')
+
+// 排序状态
+const sortState = ref({
+  key: null,
+  order: 'desc',
+  type: 'number'
+})
+
+// 排序后的基金列表
+const sortedFunds = computed(() => {
+  if (!sortState.value.key || !summary.value?.funds) {
+    return summary.value?.funds || []
+  }
+  return sortArray(
+    summary.value.funds,
+    sortState.value.key,
+    sortState.value.order,
+    sortState.value.type
+  )
+})
+
+// 排序切换函数
+const handleSort = (key, type = 'number') => {
+  if (sortState.value.key === key) {
+    sortState.value.order = sortState.value.order === 'desc' ? 'asc' : 'desc'
+  } else {
+    sortState.value.key = key
+    sortState.value.order = 'desc'
+    sortState.value.type = type
+  }
+}
 
 const getProfitClass = (value) => {
   if (value > 0) return 'profit-positive'

@@ -239,3 +239,79 @@ async def get_batch_realtime_valuation(
         update_time=datetime.now(),
         is_trading_time=is_trading
     )
+
+
+@router.get("/{fund_code}/realtime-stock", response_model=schemas.StockRealtimeNavResponse)
+async def get_fund_realtime_nav_by_stocks(
+    fund_code: str,
+    db: Session = Depends(get_db)
+):
+    """
+    基于股票持仓计算基金实时估值
+
+    使用 Tushare 新浪财经源获取股票实时行情，
+    根据基金持仓占比加权平均计算实时估值和涨跌幅
+
+    计算逻辑：
+    1. 获取基金的股票持仓数据
+    2. 获取所有持仓股票的实时涨跌幅
+    3. 按持仓占比加权平均
+    4. 实时估值 = 最新净值 × (1 + 加权涨跌幅)
+
+    Args:
+        fund_code: 基金代码
+
+    Returns:
+        实时估值数据，包含实时净值、涨跌幅等
+    """
+    from ..services.tushare_service import tushare_service
+
+    fund = crud.get_fund_by_code(db, fund_code)
+    if not fund:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"基金代码 {fund_code} 不存在"
+        )
+
+    # 获取最新正式净值
+    latest_nav_record = crud.get_latest_nav(db, fund.id)
+    if not latest_nav_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"基金 {fund_code} 没有净值数据"
+        )
+
+    latest_nav = float(latest_nav_record.unit_nav)
+
+    # 获取股票持仓
+    stock_positions = crud.get_fund_stock_positions(db, fund.id)
+
+    if not stock_positions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"基金 {fund_code} 没有股票持仓数据，请先同步持仓"
+        )
+
+    # 转换为字典列表
+    positions_data = [
+        {
+            'stock_code': pos.stock_code,
+            'weight': float(pos.weight) if pos.weight else 0
+        }
+        for pos in stock_positions
+    ]
+
+    # 计算实时估值
+    result = tushare_service.calculate_fund_realtime_nav(
+        fund_code,
+        positions_data,
+        latest_nav
+    )
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="计算实时估值失败"
+        )
+
+    return schemas.StockRealtimeNavResponse(**result)

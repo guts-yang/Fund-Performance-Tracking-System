@@ -39,3 +39,44 @@ export function formatDate(date, format = 'YYYY-MM-DD') {
 export function formatDateTime(datetime) {
   return formatDate(datetime, 'YYYY-MM-DD HH:mm:ss')
 }
+
+/**
+ * 对数组进行排序
+ * @param {Array} array - 要排序的数组
+ * @param {String} key - 排序键名（支持嵌套，如 'holdings.amount'）
+ * @param {String} order - 'asc' | 'desc'
+ * @param {String} type - 'number' | 'string' | 'date'
+ * @returns {Array} 排序后的数组
+ *
+ * @example
+ * sortArray(funds, 'amount', 'desc', 'number')
+ * sortArray(funds, 'holdings.amount', 'asc', 'number')
+ */
+export function sortArray(array, key, order = 'desc', type = 'number') {
+  if (!array || !Array.isArray(array)) return []
+
+  return [...array].sort((a, b) => {
+    // 支持嵌套属性访问
+    const getNestedValue = (obj, path) => {
+      return path.split('.').reduce((current, prop) => current?.[prop], obj)
+    }
+
+    let aVal = getNestedValue(a, key)
+    let bVal = getNestedValue(b, key)
+
+    // 处理 null/undefined
+    if (aVal == null) aVal = type === 'number' ? 0 : ''
+    if (bVal == null) bVal = type === 'number' ? 0 : ''
+
+    let comparison = 0
+    if (type === 'number') {
+      comparison = Number(aVal) - Number(bVal)
+    } else if (type === 'string') {
+      comparison = String(aVal).localeCompare(String(bVal), 'zh-CN')
+    } else if (type === 'date') {
+      comparison = new Date(aVal) - new Date(bVal)
+    }
+
+    return order === 'desc' ? -comparison : comparison
+  })
+}

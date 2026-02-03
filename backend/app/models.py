@@ -21,6 +21,7 @@ class Fund(Base):
     nav_history = relationship("NavHistory", back_populates="fund", cascade="all, delete-orphan")
     daily_pnl = relationship("DailyPnL", back_populates="fund", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="fund", cascade="all, delete-orphan")
+    stock_positions = relationship("FundStockPosition", backref="fund", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Fund(id={self.id}, code={self.fund_code}, name={self.fund_name})>"
@@ -121,3 +122,28 @@ class Transaction(Base):
 
     def __repr__(self):
         return f"<Transaction(id={self.id}, fund_id={self.fund_id}, type={self.transaction_type}, amount={self.amount})>"
+
+
+class FundStockPosition(Base):
+    """基金股票持仓表"""
+    __tablename__ = "fund_stock_positions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fund_id = Column(Integer, ForeignKey("funds.id", ondelete="CASCADE"), nullable=False, comment="基金ID")
+    stock_code = Column(String(10), nullable=False, comment="股票代码")
+    stock_name = Column(String(50), comment="股票名称")
+    shares = Column(Numeric(15, 4), comment="持仓股数")
+    market_value = Column(Numeric(15, 2), comment="持仓市值(元)")
+    weight = Column(Numeric(6, 4), comment="占基金净值比例(0-1)")
+    cost_price = Column(Numeric(10, 4), comment="成本单价")
+    report_date = Column(Date, comment="报告期")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), comment="更新时间")
+
+    # Unique constraint
+    __table_args__ = (
+        UniqueConstraint('fund_id', 'stock_code', 'report_date', name='unique_fund_stock_date'),
+    )
+
+    def __repr__(self):
+        return f"<FundStockPosition(id={self.id}, fund_id={self.fund_id}, stock_code={self.stock_code})>"

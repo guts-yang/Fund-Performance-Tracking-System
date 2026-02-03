@@ -51,6 +51,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 16px; /* Increased from default */
   }
 
   /* Monospace font for numbers */
@@ -171,15 +172,21 @@
 
   /* Tech Button */
   .btn-tech {
-    padding: 1rem 1.5rem;
+    padding: 1rem 2rem; /* Increased horizontal padding */
     background-color: var(--sci-cyan-10);
     border: 1px solid var(--sci-cyan-50);
     color: var(--sci-cyan);
-    border-radius: 0.25rem;
+    border-radius: 0.375rem; /* Slightly larger border radius */
     transition: all 300ms;
     font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
     font-feature-settings: 'tnum';
     font-variant-numeric: tabular-nums;
+    font-size: 1rem; /* Larger font size */
+    min-height: 48px; /* Ensure larger clickable area */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
   }
 
   .btn-tech:hover {
@@ -192,15 +199,21 @@
   }
 
   .btn-tech-primary {
-    padding: 1rem 1.5rem;
+    padding: 1rem 2rem; /* Increased horizontal padding */
     background-color: var(--sci-cyan-20);
     border: 1px solid var(--sci-cyan-50);
     color: var(--sci-cyan);
-    border-radius: 0.25rem;
+    border-radius: 0.375rem; /* Slightly larger border radius */
     transition: all 300ms;
     font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
     font-feature-settings: 'tnum';
     font-variant-numeric: tabular-nums;
+    font-size: 1rem; /* Larger font size */
+    min-height: 48px; /* Ensure larger clickable area */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
   }
 
   .btn-tech-primary:hover {
@@ -214,7 +227,7 @@
 
   /* Stat Value Glow */
   .stat-value-glow {
-    font-size: 1.5rem;
+    font-size: 1.875rem; /* Increased from 1.5rem */
     font-weight: 700;
     font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
     font-feature-settings: 'tnum';
@@ -224,13 +237,14 @@
 
   @media (min-width: 768px) {
     .stat-value-glow {
-      font-size: 1.875rem;
+      font-size: 2.25rem; /* Increased from 1.875rem */
     }
   }
 
   /* Sci-Fi Table */
   .table-sci-fi {
     width: 100%;
+    table-layout: fixed;
   }
 
   .table-sci-fi thead tr {
@@ -238,9 +252,9 @@
   }
 
   .table-sci-fi th {
-    padding: 1rem 1.5rem;
+    padding: 1.25rem 1.75rem; /* Increased padding */
     text-align: left;
-    font-size: 0.75rem;
+    font-size: 0.875rem; /* Increased from 0.75rem */
     font-weight: 500;
     color: var(--sci-cyan);
     text-transform: uppercase;
@@ -262,18 +276,20 @@
   }
 
   .table-sci-fi td {
-    padding: 1rem 1.5rem;
-    font-size: 0.875rem;
+    padding: 1.25rem 1.75rem; /* Increased padding */
+    font-size: 1rem; /* Increased from 0.875rem */
   }
 
   /* Input Tech Style */
   .input-tech {
     background-color: var(--navy-900-50);
     border: 1px solid var(--sci-cyan-30);
-    border-radius: 0.25rem;
-    padding: 0.75rem;
+    border-radius: 0.375rem;
+    padding: 0.875rem 1rem; /* Increased padding */
     color: rgb(243 244 246);
     transition: all 300ms;
+    font-size: 1rem; /* Larger font size */
+    min-height: 44px; /* Ensure larger clickable area */
   }
 
   .input-tech::placeholder {
@@ -288,10 +304,10 @@
 
   /* Tag Tech Style */
   .tag-tech {
-    padding: 0.5rem;
-    font-size: 0.75rem;
+    padding: 0.625rem 0.875rem; /* Increased padding */
+    font-size: 0.875rem; /* Increased from 0.75rem */
     font-weight: 500;
-    border-radius: 0.25rem;
+    border-radius: 0.375rem;
     border: 1px solid;
     font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
     font-feature-settings: 'tnum';
@@ -299,10 +315,10 @@
   }
 
   .tag-tech-cyan {
-    padding: 0.5rem;
-    font-size: 0.75rem;
+    padding: 0.625rem 0.875rem; /* Increased padding */
+    font-size: 0.875rem; /* Increased from 0.75rem */
     font-weight: 500;
-    border-radius: 0.25rem;
+    border-radius: 0.375rem;
     border: 1px solid var(--sci-cyan-50);
     background-color: var(--sci-cyan-10);
     color: var(--sci-cyan);
@@ -312,10 +328,10 @@
   }
 
   .tag-tech-gold {
-    padding: 0.5rem;
-    font-size: 0.75rem;
+    padding: 0.625rem 0.875rem; /* Increased padding */
+    font-size: 0.875rem; /* Increased from 0.75rem */
     font-weight: 500;
-    border-radius: 0.25rem;
+    border-radius: 0.375rem;
     border: 1px solid var(--sci-gold-50);
     background-color: var(--sci-gold-10);
     color: var(--sci-gold);
@@ -325,10 +341,10 @@
   }
 
   .tag-tech-green {
-    padding: 0.5rem;
-    font-size: 0.75rem;
+    padding: 0.625rem 0.875rem; /* Increased padding */
+    font-size: 0.875rem; /* Increased from 0.75rem */
     font-weight: 500;
-    border-radius: 0.25rem;
+    border-radius: 0.375rem;
     border: 1px solid var(--sci-success-30);
     background-color: var(--sci-success-10);
     color: var(--sci-success);
@@ -338,10 +354,10 @@
   }
 
   .tag-tech-red {
-    padding: 0.5rem;
-    font-size: 0.75rem;
+    padding: 0.625rem 0.875rem; /* Increased padding */
+    font-size: 0.875rem; /* Increased from 0.75rem */
     font-weight: 500;
-    border-radius: 0.25rem;
+    border-radius: 0.375rem;
     border: 1px solid var(--sci-danger-30);
     background-color: var(--sci-danger-10);
     color: var(--sci-danger);
@@ -486,10 +502,47 @@
 .el-card__header {
   background-color: var(--navy-800-50) !important;
   border-bottom: 1px solid var(--sci-cyan-20) !important;
+  padding: 1.25rem 1.5rem !important; /* Larger padding */
+  font-size: 1.125rem !important; /* Larger header text */
+  font-weight: 600 !important;
 }
 
+.el-card__body {
+  padding: 1.5rem !important; /* Larger padding */
+}
+
+/* Input Overrides */
+.el-input__inner {
+  min-height: 44px !important; /* Larger inputs */
+  padding: 0.75rem 1rem !important;
+  font-size: 1rem !important;
+  border-radius: 0.375rem !important;
+}
+
+.el-input-number {
+  width: 100% !important;
+}
+
+.el-input-number .el-input__inner {
+  text-align: left !important;
+}
+
+/* Form Item Overrides */
+.el-form-item__label {
+  font-size: 1rem !important; /* Larger label text */
+  font-weight: 500 !important;
+  padding: 0.75rem 0 !important; /* More vertical padding */
+  height: auto !important;
+}
+
+.el-form-item {
+  margin-bottom: 1.5rem !important; /* More spacing */
+}
+
+/* Table Overrides */
 .el-table {
   background-color: transparent !important;
+  font-size: 1rem !important; /* Larger table font */
 }
 
 .el-table__body tr {
@@ -503,10 +556,26 @@
 .el-table th {
   background-color: var(--navy-800-80) !important;
   color: var(--sci-cyan) !important;
+  padding: 1rem 1.25rem !important; /* Larger padding */
+  font-size: 0.875rem !important; /* Larger header font */
 }
 
 .el-table td {
   border: 1px solid var(--sci-cyan-10) !important;
+  padding: 1rem 1.25rem !important; /* Larger padding */
+  font-size: 1rem !important; /* Larger cell font */
+}
+
+/* Pagination Overrides */
+.el-pagination {
+  font-size: 1rem !important;
+}
+
+.el-pagination button,
+.el-pagination span {
+  font-size: 1rem !important;
+  min-height: 40px !important;
+  line-height: 40px !important;
 }
 
 /* Dialog Override */
@@ -517,9 +586,32 @@
 
 .el-dialog__header {
   border-bottom: 1px solid var(--sci-cyan-20) !important;
+  padding: 1.5rem !important; /* Larger padding */
+}
+
+.el-dialog__title {
+  font-size: 1.25rem !important; /* Larger title */
+  font-weight: 600 !important;
+}
+
+.el-dialog__body {
+  padding: 1.5rem !important; /* Larger padding */
+  font-size: 1rem !important; /* Larger body text */
+}
+
+.el-dialog__footer {
+  padding: 1rem 1.5rem !important; /* Larger padding */
 }
 
 /* Button Overrides */
+.el-button {
+  min-height: 44px !important; /* Larger buttons */
+  padding: 0.875rem 1.5rem !important; /* Larger padding */
+  font-size: 1rem !important; /* Larger font */
+  font-weight: 500 !important;
+  border-radius: 0.375rem !important;
+}
+
 .el-button--primary {
   background-color: var(--sci-cyan) !important;
   border-color: var(--sci-cyan) !important;
@@ -550,6 +642,12 @@
   border-color: rgb(220 38 38) !important;
 }
 
+.el-button--text {
+  min-height: auto !important;
+  padding: 0.5rem 1rem !important;
+  font-size: 1rem !important;
+}
+
 /* Menu Override */
 .el-menu {
   background-color: transparent !important;
@@ -558,6 +656,9 @@
 
 .el-menu-item {
   color: rgb(209 213 219) !important;
+  font-size: 1rem !important; /* Larger font */
+  min-height: 54px !important; /* Larger clickable area */
+  padding: 0 28px !important; /* More padding */
 }
 
 .el-menu-item:hover {
@@ -574,6 +675,10 @@
 /* Tag Override */
 .el-tag {
   border: 1px solid var(--sci-cyan-30) !important;
+  padding: 0.5rem 0.875rem !important; /* Larger padding */
+  font-size: 0.875rem !important; /* Larger font */
+  height: auto !important;
+  border-radius: 0.375rem !important;
 }
 
 .el-tag--success {

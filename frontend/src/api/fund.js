@@ -32,3 +32,8 @@ export const getPnLChartData = (fundId, params = {}) => api.get(`/pnl/chart/${fu
 export const buyFund = (data) => api.post('/transactions/buy', data)
 export const sellFund = (data) => api.post('/transactions/sell', data)
 export const getTransactions = (fundId, params = {}) => api.get(`/transactions/${fundId}`, { params })
+
+// Stock Position APIs
+export const getFundStockPositions = (fundId, params = {}) => api.get(`/stock-positions/funds/${fundId}`, { params })
+export const syncFundStockPositions = (fundId) => api.post(`/stock-positions/funds/${fundId}/sync`)
+export const getStockRealtimeNav = (fundCode) => api.get(`/nav/${fundCode}/realtime-stock`)

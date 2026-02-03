@@ -13,7 +13,7 @@ scheduler = AsyncIOScheduler()
 
 
 async def update_daily_nav():
-    """每日净值更新任务"""
+    """每日净值更新任务（24:00 执行）"""
     db = SessionLocal()
     try:
         logger.info("开始执行每日净值更新任务")
@@ -33,6 +33,9 @@ async def update_daily_nav():
             f"净值更新完成: {result['updated_count']}/{result['total_count']} 只基金成功"
         )
 
+        # Update holdings amount based on latest NAV
+        await update_holdings_amount(db)
+
         if result['errors']:
             logger.error(f"更新过程中的错误: {result['errors']}")
 
@@ -40,6 +43,34 @@ async def update_daily_nav():
         logger.error(f"每日净值更新任务失败: {str(e)}")
     finally:
         db.close()
+
+
+async def update_holdings_amount(db: Session):
+    """根据最新净值更新持仓金额"""
+    holdings = crud.get_holdings(db)
+    updated_count = 0
+
+    for holding in holdings:
+        try:
+            # Get latest NAV
+            latest_nav = crud.get_latest_nav(db, holding.fund_id)
+            if latest_nav and holding.shares > 0:
+                # Calculate new amount = shares * latest_nav
+                new_amount = holding.shares * latest_nav.unit_nav
+
+                # Update holding amount
+                holding.amount = new_amount
+                updated_count += 1
+
+                logger.info(
+                    f"更新持仓 {holding.fund_id} 金额: "
+                    f"{holding.shares} 份 × ¥{latest_nav.unit_nav} = ¥{new_amount}"
+                )
+        except Exception as e:
+            logger.error(f"更新持仓 {holding.fund_id} 金额失败: {str(e)}")
+
+    db.commit()
+    logger.info(f"持仓金额更新完成: {updated_count}/{len(holdings)} 个持仓")
 
 
 def start_scheduler():

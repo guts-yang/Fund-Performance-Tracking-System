@@ -4,7 +4,8 @@
 
 ## 系统预览
 
-![首页截图](figures/home.png)
+![首页截图](figures/home_1.png)
+![基金查询](figures/fund_query.png)
 ![基金管理](figures/funds_management.png)
 
 ## 项目简介
@@ -30,6 +31,16 @@
 - 💱 **基金交易**: 支持买入和卖出操作，自动记录交易历史
 - ⏰ **定时更新**: 每个交易日自动更新净值数据
 - 📱 **可视化展示**: 直观的图表展示收益趋势
+
+### 最新功能 (v1.4.0)
+
+- ✨ **排序功能**: 首页和基金列表支持按持有金额、实时数据等字段排序，支持正序/逆序切换
+- ✨ **当日收益**: 首页新增当日收益统计卡片，实时显示当日盈亏情况
+- ✨ **自动同步优化**:
+  - 登录时自动同步（距离上次同步超过24小时）
+  - 定时任务改为每天24:00执行
+  - 自动更新持仓金额（基于最新净值）
+- ✨ **安全性增强**: Tushare Token 使用环境变量配置，不再硬编码
 
 ### 最新功能 (v1.3.0)
 
@@ -161,8 +172,11 @@ API_HOST=0.0.0.0
 API_PORT=8000
 CORS_ORIGINS=http://localhost:5173
 
+# Tushare Pro Token（获取方式：https://tushare.pro/register）
+TUSHARE_TOKEN=your_tushare_token_here
+
 SCHEDULER_ENABLED=true
-SCHEDULER_HOUR=16
+SCHEDULER_HOUR=0    # 24:00 执行（0 表示午夜）
 SCHEDULER_MINUTE=0
 ```
 
@@ -279,10 +293,18 @@ npm run dev
    - 数据包括：基金基本信息、**实时净值**、历史净值、涨跌幅等
    - 如遇到数据获取失败，请检查网络连接或稍后重试
 
-2. **交易日判断**：
+2. **Tushare Pro 数据源**（股票持仓数据）：
+   - 用于获取基金股票持仓明细和股票实时行情
+   - 需要申请 Tushare Pro Token：https://tushare.pro/register
+   - 配置方式：在 `backend/.env` 文件中设置 `TUSHARE_TOKEN`
+   - 数据包括：基金持仓股票、股票实时价格、涨跌幅等
+   - 免费版用户有积分限制，建议合理使用
+   - 安全提示：请勿将 Token 提交到 Git 仓库
+
+3. **交易日判断**：
    - 系统会自动判断是否为交易日（排除周末）
    - 定时任务仅在交易日执行
-   - 建议设置定时任务在交易日 16:00 之后执行（此时净值已更新）
+   - 定时任务在每日 24:00 执行，更新净值和持仓金额
 
 3. **数据备份**：
    - 建议定期备份 PostgreSQL 数据库
@@ -526,6 +548,45 @@ MIT License
 ---
 
 ## 版本记录
+
+### v1.4.0 (2026-02-03)
+
+**新增功能**：
+- ✨ **排序功能**: 首页和基金列表支持多字段排序
+  - 首页可按：持有金额、实时数据排序
+  - 基金列表可按：持有金额、持有份额、实时数据排序
+  - 点击表头切换正序/逆序
+- ✨ **当日收益**: 首页新增当日收益统计卡片
+  - 实时显示当日总盈亏
+  - 红涨绿跌配色（符合中国股市惯例）
+
+**优化改进**：
+- 🔧 **自动同步机制**:
+  - 用户登录后自动同步（24小时未同步时）
+  - 定时任务从16:00改为24:00执行
+  - 每日更新持仓金额（基于最新净值）
+- 🔧 **安全性增强**:
+  - 移除硬编码的 TUSHARE_TOKEN
+  - 统一使用环境变量配置
+  - 添加 .env.example 模板
+
+**文档更新**：
+- 📝 添加 Tushare Pro 使用说明
+- 📝 更新配置文件示例
+- 📝 补充安全配置注意事项
+
+**修改文件**：
+- `backend/app/config.py` - 移除硬编码 token
+- `backend/.env` - 统一环境变量命名
+- `backend/.env.example` - 添加 Tushare 配置
+- `backend/app/scheduler.py` - 增强每日更新逻辑
+- `backend/app/crud.py` - 添加当日收益计算
+- `backend/app/schemas.py` - 扩展响应模型
+- `backend/app/services/tushare_service.py` - 添加 token 验证
+- `frontend/src/utils/helpers.js` - 添加排序工具函数
+- `frontend/src/views/Dashboard.vue` - 添加排序和当日收益
+- `frontend/src/views/FundList.vue` - 添加排序功能
+- `frontend/src/App.vue` - 添加登录自动同步
 
 ### v1.3.0 (2026-02-02)
 

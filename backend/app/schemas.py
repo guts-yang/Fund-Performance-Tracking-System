@@ -140,6 +140,7 @@ class FundSummary(BaseModel):
     market_value: Optional[Decimal]
     profit: Optional[Decimal]
     profit_rate: Optional[Decimal]
+    daily_profit: Optional[Decimal] = Field(default=0, description="当日收益")
 
 
 class PortfolioSummary(BaseModel):
@@ -148,6 +149,7 @@ class PortfolioSummary(BaseModel):
     total_market_value: Decimal = Field(description="总市值")
     total_profit: Decimal = Field(description="总收益")
     total_profit_rate: Decimal = Field(description="总收益率")
+    total_daily_profit: Decimal = Field(default=0, description="当日总收益")
     fund_count: int = Field(description="基金数量")
     funds: list[FundSummary] = Field(description="基金列表")
 
@@ -245,5 +247,45 @@ class BatchRealtimeNavResponse(BaseModel):
     valuations: List[RealtimeNavItem] = Field(default_factory=list, description="实时估值列表")
     update_time: datetime = Field(description="更新时间")
     is_trading_time: bool = Field(True, description="是否是交易时间")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== Fund Stock Position Schemas ====================
+class FundStockPositionBase(BaseModel):
+    """基金股票持仓基础模型"""
+    stock_code: str = Field(..., description="股票代码")
+    stock_name: Optional[str] = Field(None, description="股票名称")
+    shares: Optional[Decimal] = Field(None, description="持仓股数")
+    market_value: Optional[Decimal] = Field(None, description="持仓市值(元)")
+    weight: Optional[Decimal] = Field(None, ge=0, le=1, description="占基金净值比例(0-1)")
+    cost_price: Optional[Decimal] = Field(None, description="成本单价")
+    report_date: Optional[date] = Field(None, description="报告期")
+
+
+class FundStockPositionCreate(FundStockPositionBase):
+    """创建基金股票持仓请求"""
+    pass
+
+
+class FundStockPositionResponse(FundStockPositionBase):
+    """基金股票持仓响应"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    fund_id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class StockRealtimeNavResponse(BaseModel):
+    """基于股票持仓的基金实时估值响应"""
+    fund_code: str = Field(..., description="基金代码")
+    realtime_nav: float = Field(..., description="实时估值净值")
+    increase_rate: float = Field(..., description="涨跌幅(%)")
+    latest_nav: float = Field(..., description="最新正式净值")
+    stock_count: int = Field(..., description="持仓股票数")
+    update_time: datetime = Field(..., description="更新时间")
+    data_source: str = Field(default="tushare_sina", description="数据源标识")
 
     model_config = ConfigDict(from_attributes=True)
