@@ -352,148 +352,93 @@ A: efinance 支持大多数公募基金，包括：
 - LOF（上市开放式基金）
 - QDII基金
 
-## Docker 部署（可选）
+## 数据源说明
 
-### 使用 Docker Compose
+### 1. efinance 数据源
 
-项目包含 `docker-compose.yml` 文件，可以一键启动所有服务：
+**用途**：基金基础数据、历史净值、实时估值
 
-```bash
-# 启动所有服务
-docker-compose up -d
+**使用模块**：
+- `backend/app/services/fund_fetcher.py` - `FundDataFetcher` 类
 
-# 查看日志
-docker-compose logs -f
+**调用 API**：
+1. **基金基本信息**：
+   - `ef.fund.get_base_info(fund_code)` - 获取基金名称、类型、最新净值
+2. **历史净值数据**：
+   - `ef.fund.get_quote_history(fund_code)` - 获取净值历史、涨跌幅
+3. **基金搜索**：
+   - `ef.fund.get_fund_codes()` - 搜索所有基金代码
+4. **ETF/LOF 实时价格**：
+   - `ef.stock.get_realtime_quotes('ETF')` - 获取 ETF 实时价格
+   - `ef.stock.get_realtime_quotes('LOF')` - 获取 LOF 实时价格
+5. **境外基金实时估值**：
+   - `ef.fund.get_realtime_increase_rate(fund_code)` - 获取估算涨跌幅
 
-# 停止服务
-docker-compose down
-```
+**特点**：
+- 无需 API Token
+- 数据覆盖全面
+- 实时性较好
 
-### 单独构建
+### 2. Tushare Pro 数据源
 
-```bash
-# 构建后端镜像
-cd backend
-docker build -t fund-tracker-backend .
+**用途**：基金股票持仓明细、股票实时行情、估值计算
 
-# 构建前端镜像
-cd frontend
-docker build -t fund-tracker-frontend .
+**使用模块**：
+- `backend/app/services/tushare_service.py` - `TushareService` 类
+- `backend/app/api/nav.py` - 实时估值计算
+- `backend/app/api/stock_positions.py` - 持仓同步
 
-# 运行容器
-docker run -p 8000:8000 --env-file .env fund-tracker-backend
-docker run -p 5173:5173 fund-tracker-frontend
-```
+**调用 API**：
+1. **基金股票持仓**：
+   - `pro.fund_portfolio(ts_code=fund_code, period=period)` - 获取基金持仓股票明细
+2. **股票实时行情**：
+   - `ts.realtime(ts_code=stock_codes, src='sina')` - 获取股票实时价格（来源：新浪财经）
 
-## 系统架构
+**特点**：
+- 需要 Tushare Pro Token（免费注册）
+- 提供详细的持仓数据
+- 免费版有积分限制
 
-### 数据流程
+### 3. 基金估值计算逻辑
 
-```
-用户请求 → Vue.js 前端 → FastAPI 后端 → PostgreSQL 数据库
-                ↓
-        efinance API（获取基金数据）
-                ↓
-        数据处理和计算
-                ↓
-        返回结果并存储
-```
+**计算原理**：基于基金持仓股票的实时涨跌幅，加权计算基金实时估值
 
-### 核心模块说明
-
-- **[fund_fetcher.py](backend/app/services/fund_fetcher.py)** - 基金数据获取服务
-  - `get_fund_info()` - 获取基金基本信息
-  - `get_fund_nav()` - 获取最新净值
-  - `get_fund_history()` - 获取历史净值数据
-  - `search_fund()` - 搜索基金
-
-- **[scheduler.py](backend/app/scheduler.py)** - 定时任务调度
-  - 每个交易日自动更新净值
-  - 可配置执行时间
-
-- **[models.py](backend/app/models.py)** - 数据库模型
-  - Fund（基金信息）
-  - Holding（持仓信息）
-  - Transaction（交易记录）
-  - NavHistory（净值历史）
-  - DailyPnL（每日收益）
-
-## 开发指南
-
-### 后端开发
-
-```bash
-cd backend
-
-# 安装开发依赖
-pip install -r requirements.txt
-
-# 运行测试
-pytest
-
-# 代码格式化
-black app/
-isort app/
-
-# 类型检查
-mypy app/
-```
-
-### 前端开发
-
-```bash
-cd frontend
-
-# 安装依赖
-npm install
-
-# 开发模式（热重载）
-npm run dev
-
-# 构建生产版本
-npm run build
-
-# 预览生产构建
-npm run preview
-```
-
-### 数据库迁移
-
-```bash
-cd backend
-
-# 创建迁移
-alembic revision --autogenerate -m "描述"
-
-# 执行迁移
-alembic upgrade head
-
-# 回滚
-alembic downgrade -1
-```
-
-## 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-### 提交 PR 前请确保：
-
-1. 代码符合项目风格规范
-2. 添加必要的测试
-3. 更新相关文档
-4. 确保所有测试通过
-
-### 提交信息规范
+**计算公式**：
 
 ```
-feat: 添加新功能
-fix: 修复bug
-docs: 更新文档
-style: 代码格式调整
-refactor: 重构代码
-test: 添加测试
-chore: 构建/工具变动
+步骤 1：获取基金最新持仓（来自 Tushare）
+- 股票代码、持仓数量、市值、权重
+
+步骤 2：获取持仓股票的实时价格（来自新浪财经 via Tushare）
+- 当前价格、涨跌幅
+
+步骤 3：计算加权平均涨跌幅
+weighted_change_pct = Σ(weight[i] × change_pct[i])
+
+步骤 4：计算实时净值
+realtime_nav = latest_nav × (1 + weighted_change_pct)
+
+步骤 5：计算实时市值
+realtime_market_value = shares × realtime_nav
 ```
+
+**代码实现**：`backend/app/services/tushare_service.py` (Lines 85-156)
+
+**示例**：
+```
+基金 A 最新净值：1.5000
+持仓股票 B：权重 30%，涨跌幅 +2.5%
+持仓股票 C：权重 70%，涨跌幅 -1.0%
+
+加权涨跌幅 = 0.3 × 2.5% + 0.7 × (-1.0%) = 0.75% - 0.7% = 0.05%
+实时净值 = 1.5000 × (1 + 0.0005) = 1.50075
+```
+
+**注意事项**：
+- 仅在交易时间内计算（周一至周五 09:30-15:00）
+- 非交易时间返回最新官方净值
+- 实时数据缓存 60 秒
+- ETF/LOF 使用实际市场价格而非估算
 
 ## 开发计划
 
@@ -512,193 +457,29 @@ chore: 构建/工具变动
 
 MIT License
 
-## 参考资源
-
-### 技术文档
-
-- [FastAPI 官方文档](https://fastapi.tiangolo.com/)
-- [Vue 3 官方文档](https://cn.vuejs.org/)
-- [efinance 文档](https://efinance.readthedocs.io/)
-- [Element Plus 文档](https://element-plus.org/)
-- [ECharts 文档](https://echarts.apache.org/)
-
-### 数据源说明
-
-本项目使用 **efinance** 库获取基金数据，该库基于东方财富网公开数据接口，仅供学习和个人使用。
-
-### 基金信息查询
-
-- 天天基金网：https://fund.eastmoney.com/
-- 东方财富网：https://www.eastmoney.com/
-
-## 致谢
-
-感谢以下开源项目：
-
-- [FastAPI](https://github.com/tiangolo/fastapi) - 现代化的 Python Web 框架
-- [Vue.js](https://github.com/vuejs/core) - 渐进式 JavaScript 框架
-- [efinance](https://github.com/infintetime/efinance) - 财经数据接口库
-- [Element Plus](https://github.com/element-plus/element-plus) - Vue 3 UI 组件库
-- [ECharts](https://github.com/apache/echarts) - 数据可视化图表库
-
-## 联系方式
-
-如有问题或建议，欢迎提交 Issue 或 Pull Request。
-
 ---
 
 ## 版本记录
 
+### v1.5.0 (2026-02-03)
+
+**颜色逻辑修正**：
+- 🎨 符合中国股市惯例：正收益=红色、负收益=绿色、零收益=白色
+- 📝 优化 README：添加数据源详细说明和基金估值计算逻辑
+
 ### v1.4.0 (2026-02-03)
 
 **新增功能**：
-- ✨ **排序功能**: 首页和基金列表支持多字段排序
-  - 首页可按：持有金额、实时数据排序
-  - 基金列表可按：持有金额、持有份额、实时数据排序
-  - 点击表头切换正序/逆序
-- ✨ **当日收益**: 首页新增当日收益统计卡片
-  - 实时显示当日总盈亏
-  - 红涨绿跌配色（符合中国股市惯例）
+- ✨ 排序功能：首页和基金列表支持多字段排序
+- ✨ 当日收益：首页新增当日收益统计卡片
 
 **优化改进**：
-- 🔧 **自动同步机制**:
-  - 用户登录后自动同步（24小时未同步时）
-  - 定时任务从16:00改为24:00执行
-  - 每日更新持仓金额（基于最新净值）
-- 🔧 **安全性增强**:
-  - 移除硬编码的 TUSHARE_TOKEN
-  - 统一使用环境变量配置
-  - 添加 .env.example 模板
+- 🔧 自动同步机制：登录后自动同步、定时任务改为24:00、每日更新持仓金额
+- 🔧 安全性增强：移除硬编码的 TUSHARE_TOKEN
 
-**文档更新**：
-- 📝 添加 Tushare Pro 使用说明
-- 📝 更新配置文件示例
-- 📝 补充安全配置注意事项
+### v1.3.0 及更早
 
-**修改文件**：
-- `backend/app/config.py` - 移除硬编码 token
-- `backend/.env` - 统一环境变量命名
-- `backend/.env.example` - 添加 Tushare 配置
-- `backend/app/scheduler.py` - 增强每日更新逻辑
-- `backend/app/crud.py` - 添加当日收益计算
-- `backend/app/schemas.py` - 扩展响应模型
-- `backend/app/services/tushare_service.py` - 添加 token 验证
-- `frontend/src/utils/helpers.js` - 添加排序工具函数
-- `frontend/src/views/Dashboard.vue` - 添加排序和当日收益
-- `frontend/src/views/FundList.vue` - 添加排序功能
-- `frontend/src/App.vue` - 添加登录自动同步
-
-### v1.3.0 (2026-02-02)
-
-**新增功能**：
-- ✨ **盘中实时估值**: 支持交易时间内（9:30-15:00）显示基金盘中实时估值，使用 efinance 获取实时估算净值和涨跌幅
-- ✨ **自动刷新机制**: 所有页面（基金详情、列表、仪表盘）每 60 秒自动刷新实时估值数据，用户可手动开关
-- ✨ **双净值对比**: 同时显示盘中实时估值和最新正式净值，展示估值差异和涨跌幅
-
-**后端实现**：
-- 🔧 新增实时估值 API (`/api/nav/{fund_code}/realtime` 和 `/api/nav/realtime/batch`)
-- 🔧 添加交易时间判断逻辑（工作日 9:30-15:00）
-- 🔧 实现 60 秒内存缓存机制，避免频繁调用外部 API
-- 🔧 扩展 FundDataFetcher 支持实时估值获取
-
-**前端优化**：
-- 🔧 基金详情页新增"实时估值"卡片，显示实时净值、涨跌幅、估值差异
-- 🔧 基金列表页和仪表盘新增实时估值列，支持红绿色区分涨跌
-- 🔧 仪表盘使用实时估值更新市值计算
-- 🔧 添加自动刷新开关和最后更新时间显示
-
-### v1.3.1 (2026-02-02)
-
-**UI/UX 升级**：
-- 🎨 **量子指挥中心主题**: 全新科幻风格界面设计
-  - 深海蓝（#050810）+ 青色霓虹（#00d4ff）+ 奢华金（#ffd700）配色
-  - 玻璃态卡片设计，半透明背景和背景模糊效果
-  - 动态边框光晕和科技感装饰元素
-  - 优化数据可视化图表，增强可读性
-  - 自定义滚动条和表单控件样式
-
-**代码质量优化**：
-- 🔧 提取公共工具函数到 `utils/helpers.js`（formatNumber、formatDate、formatDateTime）
-- 🔧 删除重复代码（createHolding、重复网格样式、重复工具函数）
-- 🔧 修复 PostCSS 编译错误（HoldingList.vue 中的 @apply 指令）
-- 🔧 统一数字格式化逻辑（支持千分位分隔符和自定义小数位数）
-- 🔧 统一日期格式化逻辑（使用 dayjs）
-- 🔧 添加完整的 JSDoc 文档注释
-
-**技术改进**：
-- ✨ 改进代码可维护性，减少重复代码约 20%
-- ✨ 统一修改只需改一处，提升开发效率
-- ✨ 增强前端构建稳定性
-- ✨ 优化 Element Plus 组件适配深色主题
-
-### v1.2.0 (2025-02-02)
-
-**新增功能**：
-- ✨ **简化持仓设置**: 只需输入持有金额，系统自动获取净值并计算份额和成本价
-  - 使用 `auto_fetch_nav` 参数启用自动净值获取
-  - 后端通过 efinance 实时获取最新净值
-  - 自动计算：份额 = 金额 / 净值，成本价 = 净值
-- ✨ **基金交易功能**: 支持买入/卖出操作
-  - **买入**: 输入金额 → 自动获取当日净值 → 计算份额 → 更新持仓 → 成本价=当日净值
-  - **卖出**: 支持按金额或按份额 → 自动获取当日净值 → 验证份额 → 更新持仓 → 成本价保持不变
-  - 交易历史记录：完整记录每笔交易的类型、金额、份额、净值和日期
-- ✨ **基金名称显示优化**: 基金列表优先显示基金简称，基金代码作为备选
-
-**后端修改**：
-- 🔧 `schemas.py` - 添加 `auto_fetch_nav` 参数支持，添加 Transaction Schema
-- 🔧 `holdings.py` - 实现自动净值获取逻辑
-- 🔧 `funds.py` - 使用 joinedload 预加载持仓数据
-- 🔧 `crud.py` - 添加交易 CRUD 函数（execute_buy_transaction、execute_sell_transaction）
-- 🔧 `models.py` - 添加 Transaction 模型
-- 🔧 `transactions.py` - 新建交易 API（买入/卖出/历史查询）
-- 🔧 `main.py` - 注册交易路由
-
-**前端修改**：
-- 🔧 `FundList.vue` - 简化持仓表单为只输入金额，添加交易对话框，支持买入/卖出操作
-- 🔧 `fund.js` - 添加交易 API 函数（buyFund、sellFund、getTransactions）
-
-**数据库变更**：
-- ➕ 新增 `transactions` 表，记录所有交易历史
-
-**Bug 修复**：
-- 🐛 修复 Schema 前向引用问题（HoldingResponse 在 FundResponse 之前定义）
-
-### v1.1.0 (2025-02-01)
-
-**新增功能**：
-- ✨ 基金名称自动获取（可手动修改）- 输入基金代码后自动从 efinance 获取基金名称和类型
-- ✨ 基金列表页快速设置持仓 - 在基金列表页直接点击"设置持仓"按钮快速设置持仓信息
-- ✨ 灵活输入，自动计算第三个字段 - 支持三种自动计算模式：
-  - 输入金额和成本价 → 自动计算份额
-  - 输入金额和份额 → 自动计算成本价
-  - 输入份额和成本价 → 自动计算金额
-- ✨ 基金列表显示持有金额和持有份额列
-
-**优化**：
-- 🔧 优化持仓计算逻辑，支持灵活输入
-- 🔧 改进用户交互体验，添加加载状态提示
-
-**Bug 修复**：
-- 🐛 修复同步功能返回 500 错误的问题（移除错误的 pz 参数）
-- 🐛 修复基金信息不显示的问题（正确处理 pandas Series 和 dict 类型）
-- 🔧 配置 Pydantic 忽略 .env 中的额外字段（extra = "ignore"）
-- 🔧 增强同步端点的错误处理，提供更详细的错误信息
-
-**修改文件**：
-- `backend/app/api/funds.py` - 新增基金信息查询 API，增强错误处理
-- `backend/app/schemas.py` - 新增 FundInfoResponse 模型
-- `backend/app/api/holdings.py` - 优化持仓计算逻辑
-- `backend/app/config.py` - 添加 extra = "ignore" 配置
-- `backend/app/services/fund_fetcher.py` - 修复 API 调用参数和返回值处理
-- `frontend/src/api/fund.js` - 新增 API 调用方法
-- `frontend/src/views/FundList.vue` - 实现新功能
-
-### v1.0.0 (2026-01-31)
-
-**初始版本**：
-- 🎉 基础基金管理功能（添加、编辑、删除基金）
-- 💰 持仓管理功能
-- 📈 净值查询和同步
-- 📊 收益统计和展示
-- ⏰ 定时任务自动更新净值
-- 🎨 Dashboard 可视化展示
+- 盘中实时估值、自动刷新机制、双净值对比
+- 简化持仓设置、基金交易功能
+- 量子指挥中心主题UI升级
+- 基金管理、持仓管理、收益分析等核心功能

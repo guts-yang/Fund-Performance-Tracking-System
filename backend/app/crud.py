@@ -310,12 +310,11 @@ def calculate_daily_pnl(db: Session, fund_id: int, holding: models.Holding) -> O
 
 
 def get_portfolio_summary(db: Session) -> dict:
-    """获取投资组合汇总（包含当日收益）"""
+    """获取投资组合汇总"""
     holdings = get_holdings(db)
 
     total_cost = Decimal("0")
     total_market_value = Decimal("0")
-    total_daily_profit = Decimal("0")  # 新增：当日收益
     fund_summaries = []
 
     for holding in holdings:
@@ -333,11 +332,6 @@ def get_portfolio_summary(db: Session) -> dict:
         profit = market_value - cost
         profit_rate = (profit / cost * 100) if cost > 0 else Decimal("0")
 
-        # 计算当日收益
-        daily_pnl = get_daily_pnl(db, holding.fund_id, latest_nav.date) if latest_nav else None
-        daily_profit = daily_pnl.profit if daily_pnl else Decimal("0")
-        total_daily_profit += daily_profit
-
         fund_summaries.append({
             "fund_id": holding.fund_id,
             "fund_code": holding.fund.fund_code,
@@ -349,8 +343,7 @@ def get_portfolio_summary(db: Session) -> dict:
             "latest_nav": latest_nav.unit_nav if latest_nav else None,
             "market_value": market_value,
             "profit": profit,
-            "profit_rate": profit_rate,
-            "daily_profit": daily_profit  # 新增：当日收益
+            "profit_rate": profit_rate
         })
 
     total_profit = total_market_value - total_cost
@@ -361,7 +354,6 @@ def get_portfolio_summary(db: Session) -> dict:
         "total_market_value": total_market_value,
         "total_profit": total_profit,
         "total_profit_rate": total_profit_rate,
-        "total_daily_profit": total_daily_profit,  # 新增：当日总收益
         "fund_count": len(holdings),
         "funds": fund_summaries
     }

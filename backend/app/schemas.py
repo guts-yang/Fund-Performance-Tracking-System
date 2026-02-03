@@ -140,7 +140,6 @@ class FundSummary(BaseModel):
     market_value: Optional[Decimal]
     profit: Optional[Decimal]
     profit_rate: Optional[Decimal]
-    daily_profit: Optional[Decimal] = Field(default=0, description="当日收益")
 
 
 class PortfolioSummary(BaseModel):
@@ -149,7 +148,6 @@ class PortfolioSummary(BaseModel):
     total_market_value: Decimal = Field(description="总市值")
     total_profit: Decimal = Field(description="总收益")
     total_profit_rate: Decimal = Field(description="总收益率")
-    total_daily_profit: Decimal = Field(default=0, description="当日总收益")
     fund_count: int = Field(description="基金数量")
     funds: list[FundSummary] = Field(description="基金列表")
 

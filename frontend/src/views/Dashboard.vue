@@ -71,24 +71,24 @@
       <!-- Total Daily Profit Card -->
       <el-col :span="6" class="summary-col">
         <div class="glass-card-enhanced card-hover p-6 relative"
-             :class="getProfitClass(summary?.total_daily_profit)">
+             :class="getProfitClass(totalDailyProfit)">
           <div class="flex items-center justify-between mb-4">
             <div class="card-label text-sm text-gray-400 flex items-center font-modern uppercase tracking-wider">
               <span class="w-2 h-2 rounded-full mr-2 animate-pulse"
-                    :class="summary?.total_daily_profit >= 0 ? 'bg-sci-success' : 'bg-sci-danger'"></span>
+                    :class="totalDailyProfit >= 0 ? 'bg-sci-success' : 'bg-sci-danger'"></span>
               当日收益
             </div>
             <div class="card-icon w-10 h-10 flex items-center justify-center
                         bg-navy-800/60 rounded-lg"
-                 :style="'border: 1px solid ' + (summary?.total_daily_profit >= 0 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)')">
-              <span class="text-lg" :class="summary?.total_daily_profit >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                 :style="'border: 1px solid ' + (totalDailyProfit >= 0 ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)')">
+              <span class="text-lg" :class="totalDailyProfit >= 0 ? 'text-sci-success' : 'text-sci-danger'">
                 📅
               </span>
             </div>
           </div>
           <div class="card-value font-data"
-               :class="getProfitClass(summary?.total_daily_profit)">
-            {{ summary?.total_daily_profit >= 0 ? '+' : '' }}¥{{ formatNumber(summary?.total_daily_profit || 0) }}
+               :class="getProfitClass(totalDailyProfit)">
+            {{ totalDailyProfit >= 0 ? '+' : '' }}¥{{ formatNumber(totalDailyProfit) }}
           </div>
         </div>
       </el-col>
@@ -278,6 +278,18 @@ const handleSort = (key, type = 'number') => {
     sortState.value.type = type
   }
 }
+
+// 计算总当日收益（基于实时估值）
+const totalDailyProfit = computed(() => {
+  if (!summary.value?.funds) return 0
+
+  return summary.value.funds.reduce((total, fund) => {
+    // 使用实时市值（如果有），否则使用正式市值
+    const realtimeMarketValue = fund.realtime_market_value || fund.market_value || 0
+    const cost = fund.cost || 0
+    return total + (realtimeMarketValue - cost)
+  }, 0)
+})
 
 const getProfitClass = (value) => {
   if (value > 0) return 'profit-positive'
