@@ -8,8 +8,10 @@ import tushare as ts
 from typing import List, Dict, Optional
 from datetime import datetime
 import pandas as pd
+import logging
 from ..config import get_settings
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
@@ -58,10 +60,13 @@ class TushareService:
             Dict: 实时行情数据，key 为股票代码
         """
         try:
+            logger.info(f"[Tushare] 正在获取 {len(stock_codes)} 只股票的实时行情")
+
             # 使用新浪财经源获取实时行情
             df = ts.realtime(ts_code=stock_codes, src='sina')
 
             if df.empty:
+                logger.warning(f"[Tushare] 未获取到股票实时行情数据")
                 return {}
 
             result = {}
@@ -77,9 +82,11 @@ class TushareService:
                         'amount': float(row['amount']) if pd.notna(row.get('amount')) else None,
                         'update_time': datetime.now()
                     }
+
+            logger.info(f"[Tushare] 成功获取 {len(result)} 只股票的实时行情")
             return result
         except Exception as e:
-            print(f"[Tushare] 获取实时行情失败: {e}")
+            logger.error(f"[Tushare] 获取实时行情失败: {e}")
             return {}
 
     def calculate_fund_realtime_nav(

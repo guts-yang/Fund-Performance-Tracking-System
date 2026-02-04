@@ -2,10 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime, date
+import logging
+import efinance as ef
 
 from ..database import get_db
 from .. import crud, schemas
 from ..services.fund_fetcher import FundDataFetcher
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/nav", tags=["nav"])
 
@@ -315,3 +319,206 @@ async def get_fund_realtime_nav_by_stocks(
         )
 
     return schemas.StockRealtimeNavResponse(**result)
+
+
+@router.post("/realtime/batch-stock", response_model=schemas.BatchRealtimeNavResponse)
+async def get_batch_realtime_valuation_by_stocks(
+    fund_codes: List[str],
+    db: Session = Depends(get_db)
+):
+    """
+    批量获取多只基金实时估值（基于股票持仓计算）
+
+    使用 Tushare 新浪财经源获取股票实时行情，
+    根据基金持仓占比加权平均计算实时估值
+
+    优先级：
+    1. 场内基金（ETF/LOF）：使用实时股价
+    2. 有股票持仓的基金：使用股票持仓估值
+    3. 降级方案：使用最新正式净值的日增长率
+
+    Args:
+        fund_codes: 基金代码列表
+
+    Returns:
+        批量实时估值数据
+    """
+    from ..services.tushare_service import tushare_service
+
+    fetcher = FundDataFetcher()
+    is_trading = fetcher.is_trading_time()
+
+    valuations = []
+
+    # 获取基金信息
+    funds = crud.get_funds_by_codes(db, fund_codes)
+    fund_id_map = {f.fund_code: f.id for f in funds}
+    fund_types = {f.fund_code: f.fund_type for f in funds}
+
+    if is_trading:
+        # ========== 交易时间处理 ==========
+
+        # 1. 分离场内和场外基金
+        listed_funds = []
+        offshore_funds = []
+
+        for fund_code in fund_codes:
+            fund_type = fund_types.get(fund_code)
+            if FundDataFetcher.is_listed_fund(fund_type):
+                listed_funds.append(fund_code)
+            else:
+                offshore_funds.append(fund_code)
+
+        # 2. 处理场内基金（实时股价）
+        if listed_funds:
+            try:
+                etf_data = ef.stock.get_realtime_quotes('ETF')
+                lof_data = ef.stock.get_realtime_quotes('LOF')
+
+                # 合并数据
+                listed_data = None
+                if etf_data is not None and not etf_data.empty:
+                    if lof_data is not None and not lof_data.empty:
+                        import pandas as pd
+                        listed_data = pd.concat([etf_data, lof_data], ignore_index=True)
+                    else:
+                        listed_data = etf_data
+                elif lof_data is not None and not lof_data.empty:
+                    listed_data = lof_data
+
+                if listed_data is not None:
+                    for code in listed_funds:
+                        fund_row = listed_data[listed_data['股票代码'] == code]
+                        if not fund_row.empty:
+                            row = fund_row.iloc[0]
+                            fund_id = fund_id_map.get(code)
+                            latest_nav = crud.get_latest_nav(db, fund_id) if fund_id else None
+                            valuations.append(schemas.RealtimeNavItem(
+                                fund_code=code,
+                                data_source="stock",
+                                is_listed_fund=True,
+                                current_price=float(row['最新价']),
+                                increase_rate=float(row['涨跌幅']),
+                                estimate_time=datetime.now(),
+                                latest_nav_date=latest_nav.date if latest_nav else None,
+                                latest_nav_unit_nav=float(latest_nav.unit_nav) if latest_nav else None
+                            ))
+                        else:
+                            # 场内基金未找到，降级到场外处理
+                            offshore_funds.append(code)
+            except Exception as e:
+                logger.error(f"获取场内基金实时股价失败: {e}")
+                offshore_funds.extend(listed_funds)
+
+        # 3. 处理场外基金（基于股票持仓）
+        for fund_code in offshore_funds:
+            fund_id = fund_id_map.get(fund_code)
+            if not fund_id:
+                continue
+
+            latest_nav = crud.get_latest_nav(db, fund_id)
+            if not latest_nav:
+                # 没有净值数据，跳过
+                continue
+
+            latest_nav_value = float(latest_nav.unit_nav)
+
+            # 获取股票持仓
+            stock_positions = crud.get_fund_stock_positions(db, fund_id)
+
+            if stock_positions:
+                # 有持仓数据，使用股票持仓估值
+                positions_data = [
+                    {
+                        'stock_code': pos.stock_code,
+                        'weight': float(pos.weight) if pos.weight else 0
+                    }
+                    for pos in stock_positions
+                ]
+
+                result = tushare_service.calculate_fund_realtime_nav(
+                    fund_code,
+                    positions_data,
+                    latest_nav_value
+                )
+
+                if result:
+                    valuations.append(schemas.RealtimeNavItem(
+                        fund_code=fund_code,
+                        data_source="tushare_sina",
+                        is_listed_fund=False,
+                        current_price=None,
+                        increase_rate=result.get('increase_rate'),
+                        estimate_time=result.get('update_time'),
+                        latest_nav_date=latest_nav.date,
+                        latest_nav_unit_nav=latest_nav_value
+                    ))
+                else:
+                    # 股票持仓估值失败，使用efinance降级
+                    await _append_efinance_fallback(fund_code, fund_id, valuations, db)
+            else:
+                # 没有持仓数据，使用efinance降级
+                await _append_efinance_fallback(fund_code, fund_id, valuations, db)
+    else:
+        # ========== 非交易时间处理 ==========
+        # 返回最新正式净值的日增长率
+        for fund in funds:
+            latest_nav = crud.get_latest_nav(db, fund.id)
+            valuations.append(schemas.RealtimeNavItem(
+                fund_code=fund.fund_code,
+                data_source="nav",
+                is_listed_fund=False,
+                increase_rate=float(latest_nav.daily_growth * 100) if latest_nav and latest_nav.daily_growth else None,
+                estimate_time=None,
+                latest_nav_date=latest_nav.date if latest_nav else None,
+                latest_nav_unit_nav=float(latest_nav.unit_nav) if latest_nav else None
+            ))
+
+    return schemas.BatchRealtimeNavResponse(
+        valuations=valuations,
+        update_time=datetime.now(),
+        is_trading_time=is_trading
+    )
+
+
+async def _append_efinance_fallback(fund_code: str, fund_id: int, valuations: List, db: Session):
+    """efinance 降级方案"""
+    latest_nav = crud.get_latest_nav(db, fund_id)
+
+    try:
+        realtime_data = FundDataFetcher.get_fund_realtime_valuation(fund_code)
+
+        if realtime_data and realtime_data.get("increase_rate") is not None:
+            valuations.append(schemas.RealtimeNavItem(
+                fund_code=fund_code,
+                data_source=realtime_data.get("data_source", "estimate"),
+                is_listed_fund=False,
+                current_price=realtime_data.get("current_price"),
+                increase_rate=realtime_data.get("increase_rate"),
+                estimate_time=realtime_data.get("estimate_time"),
+                latest_nav_date=realtime_data.get("latest_nav_date") or (latest_nav.date if latest_nav else None),
+                latest_nav_unit_nav=float(latest_nav.unit_nav) if latest_nav else None
+            ))
+        else:
+            # efinance也失败，使用正式净值
+            valuations.append(schemas.RealtimeNavItem(
+                fund_code=fund_code,
+                data_source="nav",
+                is_listed_fund=False,
+                increase_rate=float(latest_nav.daily_growth * 100) if latest_nav and latest_nav.daily_growth else None,
+                estimate_time=None,
+                latest_nav_date=latest_nav.date if latest_nav else None,
+                latest_nav_unit_nav=float(latest_nav.unit_nav) if latest_nav else None
+            ))
+    except Exception as e:
+        logger.error(f"efinance 降级失败 {fund_code}: {e}")
+        # 最终降级：使用正式净值
+        valuations.append(schemas.RealtimeNavItem(
+            fund_code=fund_code,
+            data_source="nav",
+            is_listed_fund=False,
+            increase_rate=float(latest_nav.daily_growth * 100) if latest_nav and latest_nav.daily_growth else None,
+            estimate_time=None,
+            latest_nav_date=latest_nav.date if latest_nav else None,
+            latest_nav_unit_nav=float(latest_nav.unit_nav) if latest_nav else None
+        ))

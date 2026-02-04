@@ -21,7 +21,8 @@ export const getLatestNav = (fundCode) => api.get(`/nav/${fundCode}`)
 export const getNavHistory = (fundCode, params = {}) => api.get(`/nav/${fundCode}/history`, { params })
 export const syncAllNav = () => api.post('/nav/sync-all')
 export const getRealtimeValuation = (fundCode) => api.get(`/nav/${fundCode}/realtime`)
-export const getBatchRealtimeValuation = (fundCodes) => api.post('/nav/realtime/batch', fundCodes)
+// 批量获取基金实时估值（基于股票持仓）
+export const getBatchRealtimeValuation = (fundCodes) => api.post('/nav/realtime/batch-stock', fundCodes)
 
 // PnL APIs
 export const getPortfolioSummary = () => api.get('/pnl/summary')
