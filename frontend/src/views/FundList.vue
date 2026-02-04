@@ -14,7 +14,10 @@
           <el-tag v-if="autoRefresh" type="success" class="tag-tech-green">
             <span class="flex items-center">
               <span class="w-1.5 h-1.5 bg-sci-success rounded-full mr-2 animate-pulse"></span>
-              自动刷新中 ({{ lastUpdateTime ? lastUpdateTime : '--:--:--' }})
+              {{ lastUpdateTime ? lastUpdateTime : '--:--:--' }}
+            </span>
+            <span class="ml-2 text-xs" :class="isTradingTime() ? 'text-sci-success' : 'text-gray-500'">
+              {{ isTradingTime() ? '🔴 交易中' : '⚫ 非交易' }}
             </span>
           </el-tag>
           <button @click="toggleAutoRefresh" class="btn-tech">
@@ -357,6 +360,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getFunds, createFund, deleteFund, syncFund, getFundInfoByCode, createOrUpdateHolding, buyFund, sellFund, getBatchRealtimeValuation } from '@/api/fund'
 import { formatNumber, formatDate, sortArray } from '@/utils/helpers'
+import { isTradingTime, getDynamicRefreshInterval } from '@/utils/trading_time'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -487,6 +491,11 @@ const fetchRealtimeValuation = async () => {
   } catch (error) {
     console.error('获取实时估值失败:', error)
   }
+
+  // 在获取数据后重新启动定时器（动态调整间隔）
+  if (autoRefresh.value) {
+    startAutoRefresh()
+  }
 }
 
 // 切换自动刷新
@@ -501,10 +510,14 @@ const toggleAutoRefresh = () => {
 
 // 开启自动刷新
 const startAutoRefresh = () => {
-  // 每60秒刷新一次
+  stopAutoRefresh() // 先停止现有的定时器
+
+  const interval = getDynamicRefreshInterval()
   refreshInterval.value = setInterval(() => {
     fetchRealtimeValuation()
-  }, 60000)
+  }, interval)
+
+  console.log(`[FundList] 自动刷新已启动，间隔: ${interval / 1000}秒，交易时间: ${isTradingTime()}`)
 }
 
 // 停止自动刷新

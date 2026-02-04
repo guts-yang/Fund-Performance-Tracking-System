@@ -79,7 +79,7 @@
                 {{ currentTime }}
               </div>
               <div class="text-xs text-sci-gold/80 font-tech tracking-wide">
-                v4.3.0
+                v4.4.0
               </div>
             </div>
           </div>

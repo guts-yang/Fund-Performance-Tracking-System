@@ -128,7 +128,10 @@
                 <span class="w-1.5 h-1.5 rounded-full mr-2"
                       :class="autoRefresh ? 'bg-sci-success animate-pulse' : 'bg-gray-500'"></span>
                 <span class="text-xs text-gray-400">
-                  {{ autoRefresh ? '已开启 (每60秒)' : '已关闭' }}
+                  {{ autoRefresh ? '已开启' : '已关闭' }}
+                </span>
+                <span v-if="autoRefresh" class="ml-2 text-xs" :class="isTradingTime() ? 'text-sci-success' : 'text-gray-500'">
+                  {{ isTradingTime() ? '🔴 交易中' : '⚫ 非交易' }}
                 </span>
               </div>
               <button @click="toggleAutoRefresh" class="btn-tech text-sm">
@@ -310,6 +313,7 @@ import { useRoute } from 'vue-router'
 import * as echarts from 'echarts'
 import { getFund, getHolding, getLatestNav, getPnLChartData, syncFund, getRealtimeValuation, getFundStockPositions, syncFundStockPositions, getStockRealtimeNav } from '@/api/fund'
 import { formatNumber, formatDate, formatDateTime } from '@/utils/helpers'
+import { isTradingTime, getDynamicRefreshInterval } from '@/utils/trading_time'
 import dayjs from 'dayjs'
 
 const route = useRoute()
@@ -397,6 +401,11 @@ const fetchRealtimeData = async () => {
     // 非交易时间或获取失败时保持原有数据或设为null
     console.error('获取实时估值失败:', error)
   }
+
+  // 在获取数据后重新启动定时器（动态调整间隔）
+  if (autoRefresh.value) {
+    startAutoRefresh()
+  }
 }
 
 const toggleAutoRefresh = () => {
@@ -409,11 +418,15 @@ const toggleAutoRefresh = () => {
 }
 
 const startAutoRefresh = () => {
-  // 每60秒刷新一次（包括基于股票的实时估值）
+  stopAutoRefresh() // 先停止现有的定时器
+
+  const interval = getDynamicRefreshInterval()
   refreshInterval.value = setInterval(() => {
     fetchRealtimeData()
     fetchStockRealtimeNav()
-  }, 60000)
+  }, interval)
+
+  console.log(`[FundDetail] 自动刷新已启动，间隔: ${interval / 1000}秒，交易时间: ${isTradingTime()}`)
 }
 
 const stopAutoRefresh = () => {

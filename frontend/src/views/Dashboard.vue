@@ -113,7 +113,10 @@
                         backdrop-blur-sm">
             <span class="status-pulse w-2 h-2 bg-sci-success rounded-full"></span>
             <span class="text-xs text-sci-success font-data tracking-wider">
-              自动刷新中 ({{ lastUpdateTime ? lastUpdateTime : '--:--:--' }})
+              {{ lastUpdateTime ? lastUpdateTime : '--:--:--' }}
+            </span>
+            <span class="ml-2 text-xs" :class="isTradingTime() ? 'text-sci-success' : 'text-gray-500'">
+              {{ isTradingTime() ? '🔴 交易中' : '⚫ 非交易' }}
             </span>
           </div>
           <button @click="toggleAutoRefresh"
@@ -236,6 +239,7 @@ import { useRouter } from 'vue-router'
 import { useFundStore } from '@/stores/fund'
 import { syncAllNav, getBatchRealtimeValuation } from '@/api/fund'
 import { formatNumber, sortArray } from '@/utils/helpers'
+import { isTradingTime, getDynamicRefreshInterval } from '@/utils/trading_time'
 import dayjs from 'dayjs'
 
 const router = useRouter()
@@ -347,6 +351,11 @@ const fetchSummaryWithRealtime = async () => {
     } catch (error) {
       console.error('获取实时估值失败:', error)
     }
+
+    // 在获取数据后重新启动定时器（动态调整间隔）
+    if (autoRefresh.value) {
+      startAutoRefresh()
+    }
   }
 }
 
@@ -360,9 +369,14 @@ const toggleAutoRefresh = () => {
 }
 
 const startAutoRefresh = () => {
+  stopAutoRefresh() // 先停止现有的定时器
+
+  const interval = getDynamicRefreshInterval()
   refreshInterval.value = setInterval(() => {
     fetchSummaryWithRealtime()
-  }, 60000)
+  }, interval)
+
+  console.log(`[Dashboard] 自动刷新已启动，间隔: ${interval / 1000}秒，交易时间: ${isTradingTime()}`)
 }
 
 const stopAutoRefresh = () => {
