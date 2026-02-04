@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
 import logging
 import pandas as pd
 
@@ -109,14 +109,29 @@ async def sync_fund_stock_positions(
 
             logger.debug(f"[持仓同步] 处理股票 {stock_code}: symbol={row.get('symbol')}, amount={row.get('amount')}, mkv={row.get('mkv')}, stk_mkv_ratio={row.get('stk_mkv_ratio')}")
 
+            # 解析报告期日期（字符串 '20251231' → date 对象）
+            report_date_str = row.get('end_date')
+            report_date = None
+            if pd.notna(report_date_str) and report_date_str:
+                try:
+                    report_date = datetime.strptime(str(report_date_str), '%Y%m%d').date()
+                except ValueError:
+                    logger.warning(f"[持仓同步] 无法解析日期 {report_date_str}")
+
+            # Tushare 返回的 stk_mkv_ratio 是百分比形式（如 4.82），需要除以 100 转为小数
+            weight_raw = row.get('stk_mkv_ratio')
+            weight = None
+            if pd.notna(weight_raw) and weight_raw:
+                weight = float(weight_raw) / 100.0
+
             position = schemas.FundStockPositionCreate(
                 stock_code=stock_code,
                 stock_name=row.get('symbol', ''),  # 修正：使用 symbol 字段
                 shares=float(row.get('amount', 0)) if pd.notna(row.get('amount')) else None,  # 修正：使用 amount 字段
                 market_value=float(row.get('mkv', 0)) if pd.notna(row.get('mkv')) else None,  # 修正：使用 mkv 字段
-                weight=float(row.get('stk_mkv_ratio', 0)) if pd.notna(row.get('stk_mkv_ratio')) else None,  # 修正：使用 stk_mkv_ratio 字段
+                weight=weight,  # 修正：百分比转小数
                 cost_price=None,  # Tushare 不提供成本价格
-                report_date=row.get('end_date')
+                report_date=report_date  # 修正：字符串转 date 对象
             )
             positions.append(position)
 
