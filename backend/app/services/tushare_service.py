@@ -30,13 +30,18 @@ class TushareService:
         获取基金股票持仓明细
 
         Args:
-            fund_code: 基金代码（如：000001.OF）
+            fund_code: 基金代码（如：000001，会自动添加 .OF 后缀）
             period: 报告期（如：202401），默认获取最新
 
         Returns:
             DataFrame: 持仓明细数据
         """
         try:
+            # 自动添加 .OF 后缀（如果还没有）
+            if not fund_code.endswith('.OF'):
+                fund_code = f"{fund_code}.OF"
+                logger.info(f"[Tushare] 自动为基金代码添加 .OF 后缀: {fund_code}")
+
             # 如果没有指定 period，获取最新季度的数据
             if period is None:
                 # 默认使用空字符串，Tushare 会返回最新的数据
@@ -46,7 +51,7 @@ class TushareService:
 
             return df
         except Exception as e:
-            print(f"[Tushare] 获取基金持仓失败 {fund_code}: {e}")
+            logger.error(f"[Tushare] 获取基金持仓失败 {fund_code}: {e}")
             return pd.DataFrame()
 
     def get_stock_realtime(self, stock_codes: List[str]) -> Dict:
