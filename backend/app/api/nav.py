@@ -313,9 +313,10 @@ async def get_fund_realtime_nav_by_stocks(
     )
 
     if not result:
+        logger.warning(f"[实时估值] 基金 {fund_code} 无法获取股票实时行情，可能原因：非交易时间/网络问题/API不可用")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="计算实时估值失败"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,  # v1.7.2: 改为 503 表示服务暂时不可用
+            detail="无法获取股票实时行情。请确认：1) 是否为交易时间（工作日 9:30-15:00）；2) 网络连接正常。非交易时间请使用正式净值数据。"
         )
 
     return schemas.StockRealtimeNavResponse(**result)

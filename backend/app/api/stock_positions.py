@@ -13,7 +13,6 @@ import pandas as pd
 from ..database import get_db
 from .. import crud, schemas
 from ..services.tushare_service import tushare_service
-from ..services.sina_finance_service import sina_finance_service
 
 logger = logging.getLogger(__name__)
 
@@ -81,16 +80,10 @@ async def sync_fund_stock_positions(
         )
 
     try:
-        # 优先使用东方财富网数据源（免费，无频率限制）
+        # 使用 Tushare API 获取持仓数据
         logger.info(f"[持仓同步] 正在同步基金 {fund.fund_code} 的持仓数据")
 
-        # 策略：东方财富网（优先） → Tushare（降级）
-        df = sina_finance_service.get_fund_portfolio(fund.fund_code)
-
-        # 如果东方财富失败，降级到 Tushare
-        if df.empty:
-            logger.warning(f"[持仓同步] 东方财富网返回空数据，降级到 Tushare API")
-            df = tushare_service.get_fund_portfolio(fund.fund_code)
+        df = tushare_service.get_fund_portfolio(fund.fund_code)
 
         if df.empty:
             logger.warning(f"[持仓同步] 基金 {fund.fund_code} Tushare 返回空数据")
@@ -107,15 +100,30 @@ async def sync_fund_stock_positions(
         # 转换为持仓记录
         positions = []
         for idx, row in df.iterrows():
-            # 处理 Tushare 返回的数据字段
-            stock_code = row.get('ts_code', '')
+            # v1.7.1 修正：Tushare API 字段含义
+            # ts_code = 基金代码（如 023754.OF）
+            # symbol = 股票代码（如 688258.SH）
+            # name = 股票名称（如 中芯国际）
+            stock_code = row.get('symbol', '')  # ✅ v1.7.1: 使用 symbol 获取股票代码
 
             # 跳过空记录
             if not stock_code:
                 logger.warning(f"[持仓同步] 第 {idx} 行股票代码为空，跳过")
                 continue
 
-            logger.debug(f"[持仓同步] 处理股票 {stock_code}: symbol={row.get('symbol')}, amount={row.get('amount')}, mkv={row.get('mkv')}, stk_mkv_ratio={row.get('stk_mkv_ratio')}")
+            # v1.7.1: 添加字段验证，防止基金代码被误认为股票代码
+            if stock_code.endswith('.OF'):
+                logger.error(f"[持仓同步] 错误：检测到基金代码 {stock_code}，应为股票代码，跳过该记录")
+                continue
+
+            # 验证股票代码格式
+            if not stock_code.endswith(('.SH', '.SZ', '.BJ', '.HK')):
+                logger.warning(f"[持仓同步] 无效的股票代码格式: {stock_code}，跳过")
+                continue
+
+            stock_name = row.get('name', '')  # ✅ v1.7.1: 使用 name 获取股票名称
+
+            logger.debug(f"[持仓同步] 处理股票 {stock_code} ({stock_name}): amount={row.get('amount')}, mkv={row.get('mkv')}, stk_mkv_ratio={row.get('stk_mkv_ratio')}")
 
             # 解析报告期日期（字符串 '20251231' → date 对象）
             report_date_str = row.get('end_date')
@@ -133,8 +141,8 @@ async def sync_fund_stock_positions(
                 weight = float(weight_raw) / 100.0
 
             position = schemas.FundStockPositionCreate(
-                stock_code=stock_code,
-                stock_name=row.get('symbol', ''),  # 修正：使用 symbol 字段
+                stock_code=stock_code,  # ✅ v1.7.1: 股票代码（如 688258.SH）
+                stock_name=stock_name,  # ✅ v1.7.1: 股票名称（如 中芯国际）
                 shares=float(row.get('amount', 0)) if pd.notna(row.get('amount')) else None,  # 修正：使用 amount 字段
                 market_value=float(row.get('mkv', 0)) if pd.notna(row.get('mkv')) else None,  # 修正：使用 mkv 字段
                 weight=weight,  # 修正：百分比转小数

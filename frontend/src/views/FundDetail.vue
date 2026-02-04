@@ -310,6 +310,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import { getFund, getHolding, getLatestNav, getPnLChartData, syncFund, getRealtimeValuation, getFundStockPositions, syncFundStockPositions, getStockRealtimeNav } from '@/api/fund'
 import { formatNumber, formatDate, formatDateTime } from '@/utils/helpers'
@@ -330,6 +331,7 @@ const chartRef = ref(null)
 // 股票持仓相关
 const stockPositions = ref([])
 const stockRealtimeNav = ref(null)
+const stockRealtimeNavError = ref(null)
 const syncingStock = ref(false)
 
 // 自动刷新相关
@@ -368,13 +370,18 @@ const syncStockPositions = async () => {
   syncingStock.value = true
   try {
     const response = await syncFundStockPositions(fundId.value)
-    if (response.data.success) {
+    if (response?.data?.success) {
       await fetchStockPositions()
       // 同步成功后也获取一次实时估值
       await fetchStockRealtimeNav()
+      ElMessage.success(`成功同步 ${response.data.funds_updated} 条持仓记录`)
+    } else {
+      ElMessage.error(response?.data?.message || '同步失败')
     }
   } catch (error) {
     console.error('同步持仓失败:', error)
+    const errorMsg = error.response?.data?.detail || error.message
+    ElMessage.error('同步持仓失败: ' + errorMsg)
   } finally {
     syncingStock.value = false
   }
@@ -386,9 +393,13 @@ const fetchStockRealtimeNav = async () => {
   try {
     const response = await getStockRealtimeNav(fund.value.fund_code)
     stockRealtimeNav.value = response.data
+    stockRealtimeNavError.value = null
   } catch (error) {
     // 如果没有持仓数据或计算失败，不显示错误
-    console.log('基于股票的实时估值不可用:', error.message)
+    const errorMsg = error.response?.data?.detail || error.message
+    stockRealtimeNav.value = null
+    stockRealtimeNavError.value = errorMsg
+    console.log('基于股票的实时估值不可用:', errorMsg)
   }
 }
 

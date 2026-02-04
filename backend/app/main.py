@@ -1,6 +1,10 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from decimal import Decimal
+from json import JSONEncoder
+import json
 import logging
 
 from .config import settings
@@ -15,6 +19,28 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Custom JSON encoder to handle Decimal types
+class CustomJSONEncoder(JSONEncoder):
+    """自定义 JSON 编码器，将 Decimal 转换为 float"""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
+
+
+class CustomJSONResponse(JSONResponse):
+    """自定义 JSON Response，使用自定义编码器"""
+    def render(self, content) -> bytes:
+        return json.dumps(
+            content,
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=None,
+            separators=(",", ":"),
+            cls=CustomJSONEncoder,
+        ).encode("utf-8")
 
 
 @asynccontextmanager
@@ -35,7 +61,8 @@ app = FastAPI(
     title="Fund Tracker API",
     description="中国基金实时净收益查询系统",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    default_response_class=CustomJSONResponse
 )
 
 # Configure CORS

@@ -32,6 +32,14 @@
 - ⏰ **定时更新**: 每个交易日自动更新净值数据
 - 📱 **可视化展示**: 直观的图表展示收益趋势
 
+### 最新功能 (v1.7.2)
+
+- 🐛 **修复实时估值 500 错误**：改进错误处理，503 状态码表示服务暂时不可用
+- 🔧 **添加交易时间检查**：非交易时间自动提示，避免 API 调用失败
+- 🔄 **股票实时行情改用 efinance**：更稳定可靠的数据源
+- 🛡️ **前端错误处理增强**：添加可选链操作符，防止未定义错误
+- ✅ 解决持仓同步和实时估值在非交易时间的问题
+
 ### 最新功能 (v1.4.0)
 
 - ✨ **排序功能**: 首页和基金列表支持按持有金额、实时数据等字段排序，支持正序/逆序切换
@@ -93,9 +101,11 @@ project/
 │   │   │   ├── holdings.py      # 持仓管理 API
 │   │   │   ├── transactions.py  # 交易记录 API
 │   │   │   ├── nav.py           # 净值查询 API
-│   │   │   └── pnl.py           # 收益统计 API
+│   │   │   ├── pnl.py           # 收益统计 API
+│   │   │   └── stock_positions.py # 股票持仓 API
 │   │   ├── services/             # 业务服务层
-│   │   │   └── fund_fetcher.py  # efinance 数据获取服务
+│   │   │   ├── fund_fetcher.py  # efinance 数据获取服务
+│   │   │   └── tushare_service.py # Tushare 数据获取服务
 │   │   ├── models.py             # SQLAlchemy 数据模型
 │   │   ├── schemas.py            # Pydantic 数据验证模式
 │   │   ├── crud.py               # 数据库 CRUD 操作
@@ -288,7 +298,14 @@ npm run dev
 ### 净值查询
 - `GET /api/nav/{fund_code}` - 获取最新净值
 - `GET /api/nav/{fund_code}/history` - 获取历史净值
+- `GET /api/nav/{fund_code}/realtime` - 获取实时估值（支持场内/场外）
 - `POST /api/nav/sync-all` - 同步所有基金净值
+
+### 股票持仓
+- `GET /api/stock-positions/funds/{fund_id}` - 获取基金股票持仓列表
+- `POST /api/stock-positions/funds/{fund_id}/sync` - 同步基金股票持仓（来自 Tushare）
+- `GET /api/nav/{fund_code}/realtime-stock` - 基于持仓计算实时估值
+- `POST /api/nav/realtime/batch-stock` - 批量获取多只基金实时估值
 
 ### 收益统计
 - `GET /api/pnl/summary` - 获取投资组合汇总
@@ -366,10 +383,11 @@ A: efinance 支持大多数公募基金，包括：
 
 ### 1. efinance 数据源
 
-**用途**：基金基础数据、历史净值、实时估值
+**用途**：基金基础数据、历史净值、实时估值、股票实时行情
 
 **使用模块**：
 - `backend/app/services/fund_fetcher.py` - `FundDataFetcher` 类
+- `backend/app/services/tushare_service.py` - `TushareService` 类（股票实时行情）
 
 **调用 API**：
 1. **基金基本信息**：
@@ -383,31 +401,33 @@ A: efinance 支持大多数公募基金，包括：
    - `ef.stock.get_realtime_quotes('LOF')` - 获取 LOF 实时价格
 5. **境外基金实时估值**：
    - `ef.fund.get_realtime_increase_rate(fund_code)` - 获取估算涨跌幅
+6. **股票实时行情**（v1.7.2 新增）：
+   - `ef.stock.get_realtime_quotes()` - 获取所有 A 股实时行情
 
 **特点**：
 - 无需 API Token
 - 数据覆盖全面
 - 实时性较好
+- 比 Tushare 爬虫接口更稳定
 
 ### 2. Tushare Pro 数据源
 
-**用途**：基金股票持仓明细、股票实时行情、估值计算
+**用途**：基金股票持仓明细（仅）
 
 **使用模块**：
 - `backend/app/services/tushare_service.py` - `TushareService` 类
-- `backend/app/api/nav.py` - 实时估值计算
 - `backend/app/api/stock_positions.py` - 持仓同步
 
 **调用 API**：
 1. **基金股票持仓**：
    - `pro.fund_portfolio(ts_code=fund_code, period=period)` - 获取基金持仓股票明细
-2. **股票实时行情**：
-   - `ts.realtime(ts_code=stock_codes, src='sina')` - 获取股票实时价格（来源：新浪财经）
 
 **特点**：
 - 需要 Tushare Pro Token（免费注册）
 - 提供详细的持仓数据
 - 免费版有积分限制
+
+**注意**：v1.7.2 起，股票实时行情已改用 efinance API，不再使用 Tushare 爬虫接口
 
 ### 3. 基金估值计算逻辑
 
@@ -419,8 +439,9 @@ A: efinance 支持大多数公募基金，包括：
 步骤 1：获取基金最新持仓（来自 Tushare）
 - 股票代码、持仓数量、市值、权重
 
-步骤 2：获取持仓股票的实时价格（来自新浪财经 via Tushare）
+步骤 2：获取持仓股票的实时价格（来自 efinance API）
 - 当前价格、涨跌幅
+- v1.7.2: 改用 efinance API，比 Tushare 爬虫接口更稳定
 
 步骤 3：计算加权平均涨跌幅
 weighted_change_pct = Σ(weight[i] × change_pct[i])
@@ -470,6 +491,41 @@ MIT License
 ---
 
 ## 版本记录
+
+### v1.7.2 (2026-02-04)
+
+**Bug 修复与优化**：
+- 🐛 **修复实时估值 500 错误**
+  - 改用 efinance API 获取股票实时行情（替代 Tushare 爬虫接口）
+  - 503 状态码表示服务暂时不可用，而不是 500 内部错误
+- 🔧 **添加交易时间检查**
+  - 自动检测周末和非交易时段
+  - 提供友好的错误提示信息
+- 🛡️ **前端错误处理增强**
+  - 添加可选链操作符（`?.`）防止未定义错误
+  - 改进错误提示，显示更详细的信息
+- 📊 **数据源优化**
+  - 股票实时行情使用 efinance API（更稳定）
+  - 移除不可靠的 Tushare 爬虫接口
+  - 数据源标识从 `tushare_sina` 改为 `efinance`
+- ✅ 解决非交易时间 API 调用失败导致的前端崩溃问题
+
+### v1.7.1 (2026-02-04)
+
+**Bug 修复（关键）**：
+- 🐛 **修复持仓同步字段映射完全颠倒的错误**
+  - Tushare API 字段含义：`ts_code`=基金代码, `symbol`=股票代码, `name`=股票名称
+  - 修正前：错误地使用 `ts_code` 作为股票代码、`symbol` 作为股票名称
+  - 修正后：正确使用 `symbol` 作为股票代码、`name` 作为股票名称
+- 🔧 **添加字段验证逻辑**
+  - 验证股票代码格式（.SH/.SZ/.BJ/.HK）
+  - 防止基金代码（.OF）被误认为股票代码
+- 🔄 **股票实时行情使用 Tushare 爬虫接口**
+  - 使用 `realtime_quote` 接口（0积分完全开放）
+  - 数据来自网络爬虫（新浪财经等），不经过 Tushare 服务器
+  - 无需付费 API，完全免费
+- ✅ 解决持仓同步 UniqueViolation 错误
+- ✅ 验证持仓数据和实时估值功能正常工作
 
 ### v1.7.0 (2026-02-04)
 

@@ -37,7 +37,7 @@
                   AURUM <span class="text-sci-cyan text-glow-cyan-enhanced">ANALYTICS</span>
                 </h1>
                 <div class="text-xs text-sci-cyan/70 font-data tracking-widest flex items-center space-x-2">
-                  <span>// FUND COMMAND v4.4.3</span>
+                  <span>// FUND COMMAND v4.5.1</span>
                   <span class="w-1 h-1 bg-sci-gold rounded-full"></span>
                   <span class="text-sci-gold/80">QUANTUM INTERFACE</span>
                 </div>

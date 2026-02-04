@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(curl:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(pytest:*)",
+      "Bash(python:*)"
     ]
   }
 }

@@ -91,7 +91,10 @@ class TushareService:
 
     def get_stock_realtime(self, stock_codes: List[str]) -> Dict:
         """
-        获取股票实时行情（使用新浪财经源）
+        获取股票实时行情（使用 efinance API）
+
+        v1.7.2: 使用 efinance 的 stock.get_realtime_quotes API
+        该 API 比 Tushare 爬虫接口更稳定可靠
 
         Args:
             stock_codes: 股票代码列表（格式：000001.SZ）
@@ -100,33 +103,57 @@ class TushareService:
             Dict: 实时行情数据，key 为股票代码
         """
         try:
-            logger.info(f"[Tushare] 正在获取 {len(stock_codes)} 只股票的实时行情")
+            import efinance as ef
 
-            # 使用新浪财经源获取实时行情
-            df = ts.realtime(ts_code=stock_codes, src='sina')
+            logger.info(f"[Efinance] 正在获取 {len(stock_codes)} 只股票的实时行情")
+            logger.debug(f"[Efinance] 股票代码列表: {stock_codes}")
 
-            if df.empty:
-                logger.warning(f"[Tushare] 未获取到股票实时行情数据")
+            # v1.7.2: 检查是否为交易时间，非交易时间 API 可能不可用
+            now = datetime.now()
+            if now.weekday() >= 5:  # 5=周六, 6=周日
+                logger.warning(f"[Efinance] 当前是周末（{now.strftime('%Y-%m-%d %H:%M')}），非交易时间，API 可能不可用")
+            elif not (9 <= now.hour < 15):  # 非交易时段
+                logger.warning(f"[Efinance] 当前是非交易时间（{now.hour}点），API 可能不可用")
+
+            # efinance API: 获取所有 A 股实时行情
+            # 该接口返回沪深京所有 A 股的实时数据，比 Tushare 爬虫更可靠
+            all_stocks_df = ef.stock.get_realtime_quotes()
+
+            if all_stocks_df is None or all_stocks_df.empty:
+                logger.warning(f"[Efinance] 获取股票实时行情失败：返回空数据")
                 return {}
 
+            # 构建股票代码映射（去除交易所后缀进行匹配）
             result = {}
-            for _, row in df.iterrows():
-                code = row.get('ts_code')
-                if code:
-                    result[code] = {
-                        'code': code,
-                        'name': row.get('name', ''),
-                        'price': float(row['price']) if pd.notna(row.get('price')) else None,
-                        'change_pct': float(row['change_pct']) if pd.notna(row.get('change_pct')) else None,
-                        'volume': int(row['volume']) if pd.notna(row.get('volume')) else None,
-                        'amount': float(row['amount']) if pd.notna(row.get('amount')) else None,
+            for stock_code in stock_codes:
+                # 提取股票代码（去除 .SZ/.SH/.BJ 后缀）
+                code_suffix_removed = stock_code.split('.')[0]
+
+                # 在返回数据中查找匹配的股票
+                # efinance 返回的列名是 '股票代码'
+                matching_rows = all_stocks_df[
+                    all_stocks_df['股票代码'] == code_suffix_removed
+                ]
+
+                if not matching_rows.empty:
+                    row = matching_rows.iloc[0]
+                    result[stock_code] = {
+                        'code': stock_code,
+                        'name': row.get('股票名称', ''),
+                        'price': float(row['最新价']) if pd.notna(row.get('最新价')) else None,
+                        'change_pct': float(row['涨跌幅']) if pd.notna(row.get('涨跌幅')) else None,
+                        'volume': int(row['成交量']) if pd.notna(row.get('成交量')) else None,
+                        'amount': float(row['成交额']) if pd.notna(row.get('成交额')) else None,
                         'update_time': datetime.now()
                     }
 
-            logger.info(f"[Tushare] 成功获取 {len(result)} 只股票的实时行情")
+            logger.info(f"[Efinance] 成功获取 {len(result)}/{len(stock_codes)} 只股票的实时行情")
             return result
+
         except Exception as e:
-            logger.error(f"[Tushare] 获取实时行情失败: {e}")
+            logger.error(f"[Efinance] 获取实时行情失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {}
 
     def calculate_fund_realtime_nav(
@@ -199,7 +226,7 @@ class TushareService:
             'latest_nav': latest_nav,
             'stock_count': valid_count,
             'update_time': datetime.now(),
-            'data_source': 'tushare_sina'
+            'data_source': 'efinance'
         }
 
 
