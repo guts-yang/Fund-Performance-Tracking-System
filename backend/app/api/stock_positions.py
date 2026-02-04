@@ -13,6 +13,7 @@ import pandas as pd
 from ..database import get_db
 from .. import crud, schemas
 from ..services.tushare_service import tushare_service
+from ..services.sina_finance_service import sina_finance_service
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +81,16 @@ async def sync_fund_stock_positions(
         )
 
     try:
-        # 从 Tushare 获取持仓数据
+        # 优先使用东方财富网数据源（免费，无频率限制）
         logger.info(f"[持仓同步] 正在同步基金 {fund.fund_code} 的持仓数据")
-        df = tushare_service.get_fund_portfolio(fund.fund_code)
+
+        # 策略：东方财富网（优先） → Tushare（降级）
+        df = sina_finance_service.get_fund_portfolio(fund.fund_code)
+
+        # 如果东方财富失败，降级到 Tushare
+        if df.empty:
+            logger.warning(f"[持仓同步] 东方财富网返回空数据，降级到 Tushare API")
+            df = tushare_service.get_fund_portfolio(fund.fund_code)
 
         if df.empty:
             logger.warning(f"[持仓同步] 基金 {fund.fund_code} Tushare 返回空数据")
