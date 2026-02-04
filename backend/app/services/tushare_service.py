@@ -9,6 +9,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import pandas as pd
 import logging
+import time
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,16 @@ class TushareService:
             raise ValueError("TUSHARE_TOKEN 未配置，请在 .env 文件中设置 TUSHARE_TOKEN")
         ts.set_token(settings.TUSHARE_TOKEN)
         self.pro = ts.pro_api()
+        self.last_call_time = None  # 上次调用时间
+
+    def _rate_limit_delay(self):
+        """添加 API 调用延迟，避免频率限制"""
+        if self.last_call_time:
+            elapsed = time.time() - self.last_call_time
+            if elapsed < 1.0:  # 两次调用间隔至少 1 秒
+                sleep_time = 1.0 - elapsed
+                logger.debug(f"[Tushare] 频率限制：等待 {sleep_time:.2f} 秒")
+                time.sleep(sleep_time)
 
     def get_fund_portfolio(self, fund_code: str, period: str = None) -> pd.DataFrame:
         """
@@ -42,6 +53,12 @@ class TushareService:
                 fund_code = f"{fund_code}.OF"
                 logger.info(f"[Tushare] 自动为基金代码添加 .OF 后缀: {fund_code}")
 
+            # 频率限制延迟
+            self._rate_limit_delay()
+
+            logger.info(f"[Tushare] 正在调用 fund_portfolio API: {fund_code}")
+            self.last_call_time = time.time()
+
             # 如果没有指定 period，获取最新季度的数据
             if period is None:
                 # 默认使用空字符串，Tushare 会返回最新的数据
@@ -49,9 +66,27 @@ class TushareService:
             else:
                 df = self.pro.fund_portfolio(ts_code=fund_code, period=period)
 
+            # 检查返回数据
+            if df.empty:
+                logger.warning(f"[Tushare] {fund_code} 返回空数据，可能原因：")
+                logger.warning(f"  1. 该基金暂无股票持仓披露")
+                logger.warning(f"  2. Tushare API 暂无该基金数据")
+                logger.warning(f"  3. API 调用频率限制（建议稍后重试）")
+            else:
+                logger.info(f"[Tushare] {fund_code} 成功获取 {len(df)} 条持仓记录")
+
             return df
+
         except Exception as e:
+            error_str = str(e)
             logger.error(f"[Tushare] 获取基金持仓失败 {fund_code}: {e}")
+
+            # 判断是否是频率限制错误
+            if "限制" in error_str or "limit" in error_str.lower() or "额度" in error_str:
+                logger.error(f"[Tushare] API 频率限制或积分不足，请稍后重试")
+            elif "权限" in error_str or "permission" in error_str.lower():
+                logger.error(f"[Tushare] API 权限不足，请检查 Tushare 账户权限")
+
             return pd.DataFrame()
 
     def get_stock_realtime(self, stock_codes: List[str]) -> Dict:
