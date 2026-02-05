@@ -253,6 +253,8 @@ async def get_fund_realtime_nav_by_stocks(
     """
     基于股票持仓计算基金实时估值
 
+    v1.7.4: 恢复功能，使用 efinance + Tushare 双数据源
+
     使用 Tushare 新浪财经源获取股票实时行情，
     根据基金持仓占比加权平均计算实时估值和涨跌幅
 
@@ -269,6 +271,7 @@ async def get_fund_realtime_nav_by_stocks(
         实时估值数据，包含实时净值、涨跌幅等
     """
     from ..services.tushare_service import tushare_service
+    from datetime import datetime
 
     fund = crud.get_fund_by_code(db, fund_code)
     if not fund:
@@ -305,7 +308,7 @@ async def get_fund_realtime_nav_by_stocks(
         for pos in stock_positions
     ]
 
-    # 计算实时估值
+    # ✅ 恢复：计算实时估值（使用双数据源）
     result = tushare_service.calculate_fund_realtime_nav(
         fund_code,
         positions_data,
@@ -313,13 +316,63 @@ async def get_fund_realtime_nav_by_stocks(
     )
 
     if not result:
-        logger.warning(f"[实时估值] 基金 {fund_code} 无法获取股票实时行情，可能原因：非交易时间/网络问题/API不可用")
+        # 503 错误，但提供更详细的错误信息
+        logger.warning(f"[实时估值] 基金 {fund_code} 无法获取股票实时行情")
+
+        # 检查是否为交易时间
+        now = datetime.now()
+        is_trading_time = (
+            now.weekday() < 5 and  # 工作日
+            (9 <= now.hour < 15)  # 9:00-15:00
+        )
+
+        if is_trading_time:
+            detail_msg = "无法获取股票实时行情。可能原因：数据源不可用、网络问题、API限流。请稍后重试或使用正式净值数据。"
+        else:
+            detail_msg = "当前非交易时间，无法获取实时行情。请使用正式净值数据。"
+
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,  # v1.7.2: 改为 503 表示服务暂时不可用
-            detail="无法获取股票实时行情。请确认：1) 是否为交易时间（工作日 9:30-15:00）；2) 网络连接正常。非交易时间请使用正式净值数据。"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=detail_msg
         )
 
     return schemas.StockRealtimeNavResponse(**result)
+    #
+    # latest_nav = float(latest_nav_record.unit_nav)
+    #
+    # # 获取股票持仓
+    # stock_positions = crud.get_fund_stock_positions(db, fund.id)
+    #
+    # if not stock_positions:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_404_NOT_FOUND,
+    #         detail=f"基金 {fund_code} 没有股票持仓数据，请先同步持仓"
+    #     )
+    #
+    # # 转换为字典列表
+    # positions_data = [
+    #     {
+    #         'stock_code': pos.stock_code,
+    #         'weight': float(pos.weight) if pos.weight else 0
+    #     }
+    #     for pos in stock_positions
+    # ]
+    #
+    # # 计算实时估值
+    # result = tushare_service.calculate_fund_realtime_nav(
+    #     fund_code,
+    #     positions_data,
+    #     latest_nav
+    # )
+    #
+    # if not result:
+    #     logger.warning(f"[实时估值] 基金 {fund_code} 无法获取股票实时行情，可能原因：非交易时间/网络问题/API不可用")
+    #     raise HTTPException(
+    #         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,  # v1.7.2: 改为 503 表示服务暂时不可用
+    #         detail="无法获取股票实时行情。请确认：1) 是否为交易时间（工作日 9:30-15:00）；2) 网络连接正常。非交易时间请使用正式净值数据。"
+    #     )
+    #
+    # return schemas.StockRealtimeNavResponse(**result)
 
 
 @router.post("/realtime/batch-stock", response_model=schemas.BatchRealtimeNavResponse)
@@ -393,7 +446,7 @@ async def get_batch_realtime_valuation_by_stocks(
                         if not fund_row.empty:
                             row = fund_row.iloc[0]
                             fund_id = fund_id_map.get(code)
-                            latest_nav = crud.get_latest_nav(db, fund_id) if fund_id else None
+                            latest_nav = crud.get_latest_nav(db, int(fund_id)) if fund_id else None  # type: ignore[arg-type]
                             valuations.append(schemas.RealtimeNavItem(
                                 fund_code=code,
                                 data_source="stock",
@@ -412,54 +465,15 @@ async def get_batch_realtime_valuation_by_stocks(
                 offshore_funds.extend(listed_funds)
 
         # 3. 处理场外基金（基于股票持仓）
+        # v1.7.3: 股票实时估值功能已禁用（efinance API 不可用）
+        # 直接跳过股票持仓估值，使用 efinance 降级方案
         for fund_code in offshore_funds:
             fund_id = fund_id_map.get(fund_code)
-            if not fund_id:
+            if fund_id is None:  # type: ignore[truthy-bool-function]
                 continue
 
-            latest_nav = crud.get_latest_nav(db, fund_id)
-            if not latest_nav:
-                # 没有净值数据，跳过
-                continue
-
-            latest_nav_value = float(latest_nav.unit_nav)
-
-            # 获取股票持仓
-            stock_positions = crud.get_fund_stock_positions(db, fund_id)
-
-            if stock_positions:
-                # 有持仓数据，使用股票持仓估值
-                positions_data = [
-                    {
-                        'stock_code': pos.stock_code,
-                        'weight': float(pos.weight) if pos.weight else 0
-                    }
-                    for pos in stock_positions
-                ]
-
-                result = tushare_service.calculate_fund_realtime_nav(
-                    fund_code,
-                    positions_data,
-                    latest_nav_value
-                )
-
-                if result:
-                    valuations.append(schemas.RealtimeNavItem(
-                        fund_code=fund_code,
-                        data_source="tushare_sina",
-                        is_listed_fund=False,
-                        current_price=None,
-                        increase_rate=result.get('increase_rate'),
-                        estimate_time=result.get('update_time'),
-                        latest_nav_date=latest_nav.date,
-                        latest_nav_unit_nav=latest_nav_value
-                    ))
-                else:
-                    # 股票持仓估值失败，使用efinance降级
-                    await _append_efinance_fallback(fund_code, fund_id, valuations, db)
-            else:
-                # 没有持仓数据，使用efinance降级
-                await _append_efinance_fallback(fund_code, fund_id, valuations, db)
+            # 使用 efinance 降级方案（跳过股票持仓估值）
+            await _append_efinance_fallback(fund_code, int(fund_id), valuations, db)  # type: ignore[arg-type]
     else:
         # ========== 非交易时间处理 ==========
         # 返回最新正式净值的日增长率

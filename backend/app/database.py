@@ -6,6 +6,10 @@ from .config import settings
 # Create database engine
 engine = create_engine(
     settings.DATABASE_URL,
+    connect_args={
+        "client_encoding": "utf8",  # ✅ 显式指定客户端编码为 UTF-8
+        "options": "-c timezone=utc"
+    },
     pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,

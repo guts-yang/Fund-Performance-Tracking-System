@@ -41,9 +41,9 @@ export function isTradingTime() {
  * 获取动态刷新间隔
  * @returns {number} 刷新间隔（毫秒）
  *
- * 交易时间：10秒
+ * 交易时间：1分钟
  * 非交易时间：5分钟
  */
 export function getDynamicRefreshInterval() {
-  return isTradingTime() ? 10000 : 300000 // 交易时间 10s，非交易时间 5min
+  return isTradingTime() ? 60000 : 300000 // 交易时间 1min，非交易时间 5min
 }

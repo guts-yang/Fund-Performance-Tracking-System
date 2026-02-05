@@ -10,9 +10,20 @@ router = APIRouter(prefix="/api/pnl", tags=["pnl"])
 
 @router.get("/summary", response_model=schemas.PortfolioSummary)
 def get_portfolio_summary(db: Session = Depends(get_db)):
-    """获取投资组合汇总"""
+    """获取投资组合汇总（包含累计总收益）"""
+
+    # 获取实时计算的投资组合汇总
     summary = crud.get_portfolio_summary(db)
-    return schemas.PortfolioSummary(**summary)
+
+    # 获取累计总收益（每日收益叠加）
+    cumulative = crud.get_portfolio_cumulative_profit(db)
+
+    # 合并返回结果
+    return {
+        **summary,
+        "cumulative_profit": cumulative["cumulative_profit"],
+        "daily_profits_history": cumulative["daily_profits"]
+    }
 
 
 @router.get("/daily/{fund_id}", response_model=List[schemas.DailyPnLResponse])

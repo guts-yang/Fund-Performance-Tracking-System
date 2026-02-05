@@ -11,6 +11,7 @@ import pandas as pd
 import logging
 import time
 from ..config import get_settings
+from ..utils.encoding import clean_stock_name, validate_chinese_name
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -89,12 +90,73 @@ class TushareService:
 
             return pd.DataFrame()
 
+    def get_stock_names_batch(self, stock_codes: List[str]) -> Dict[str, str]:
+        """
+        批量查询股票名称（带编码处理）
+
+        使用 Tushare stock_basic API 批量获取股票名称
+
+        Args:
+            stock_codes: 股票代码列表（格式：000001.SZ）
+
+        Returns:
+            Dict[str, str]: 股票代码到名称的映射
+            {
+                '000001.SZ': '平安银行',
+                '600519.SH': '贵州茅台',
+                ...
+            }
+        """
+        try:
+            logger.info(f"[Tushare] 正在批量查询 {len(stock_codes)} 只股票的名称")
+
+            # 调用 Tushare stock_basic API
+            # 注意：stock_basic API 不支持一次查询多个股票，需要分批查询或使用其他方式
+            # 这里使用单个调用查询所有股票列表，然后在内存中过滤
+            df = self.pro.stock_basic(
+                exchange='',
+                list_status='L',
+                fields='ts_code,name,area,industry,list_date'
+            )
+
+            if df.empty:
+                logger.warning(f"[Tushare] stock_basic 返回空数据")
+                return {}
+
+            # 构建股票代码到名称的映射，应用编码清理
+            name_mapping = {}
+            for _, row in df.iterrows():
+                stock_code = row['ts_code']
+                raw_name = row['name']
+
+                # ✅ 编码处理：清理可能的乱码
+                clean_name = clean_stock_name(str(raw_name))
+
+                # 验证名称有效性
+                if not clean_name or not validate_chinese_name(clean_name):
+                    logger.debug(f"[Tushare] 股票 {stock_code} 名称无效: {raw_name}")
+                    clean_name = f"股票{stock_code.split('.')[0]}"  # 使用备用名称
+
+                name_mapping[stock_code] = clean_name
+
+            # 过滤出我们需要的股票
+            result = {code: name_mapping.get(code, '') for code in stock_codes}
+            found_count = sum(1 for name in result.values() if name)
+
+            logger.info(f"[Tushare] 成功获取 {found_count}/{len(stock_codes)} 只股票的名称")
+            return result
+
+        except Exception as e:
+            logger.error(f"[Tushare] 批量查询股票名称失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {}
+
     def get_stock_realtime(self, stock_codes: List[str]) -> Dict:
         """
-        获取股票实时行情（使用 efinance API）
+        获取股票实时行情（多数据源：efinance 主，Tushare 备）
 
-        v1.7.2: 使用 efinance 的 stock.get_realtime_quotes API
-        该 API 比 Tushare 爬虫接口更稳定可靠
+        优先使用 efinance，失败时降级到 Tushare 爬虫
 
         Args:
             stock_codes: 股票代码列表（格式：000001.SZ）
@@ -102,13 +164,24 @@ class TushareService:
         Returns:
             Dict: 实时行情数据，key 为股票代码
         """
+        # 方案1: efinance（主数据源）
+        result = self._get_efinance_realtime(stock_codes)
+        if result:
+            return result
+
+        # 方案2: Tushare 爬虫（备用）
+        logger.warning("[数据源切换] efinance 失败，切换到 Tushare 爬虫接口")
+        return self._get_tushare_realtime(stock_codes)
+
+    def _get_efinance_realtime(self, stock_codes: List[str]) -> Dict:
+        """使用 efinance 获取实时行情"""
         try:
             import efinance as ef
 
             logger.info(f"[Efinance] 正在获取 {len(stock_codes)} 只股票的实时行情")
             logger.debug(f"[Efinance] 股票代码列表: {stock_codes}")
 
-            # v1.7.2: 检查是否为交易时间，非交易时间 API 可能不可用
+            # 检查是否为交易时间，非交易时间 API 可能不可用
             now = datetime.now()
             if now.weekday() >= 5:  # 5=周六, 6=周日
                 logger.warning(f"[Efinance] 当前是周末（{now.strftime('%Y-%m-%d %H:%M')}），非交易时间，API 可能不可用")
@@ -116,7 +189,6 @@ class TushareService:
                 logger.warning(f"[Efinance] 当前是非交易时间（{now.hour}点），API 可能不可用")
 
             # efinance API: 获取所有 A 股实时行情
-            # 该接口返回沪深京所有 A 股的实时数据，比 Tushare 爬虫更可靠
             all_stocks_df = ef.stock.get_realtime_quotes()
 
             if all_stocks_df is None or all_stocks_df.empty:
@@ -130,30 +202,133 @@ class TushareService:
                 code_suffix_removed = stock_code.split('.')[0]
 
                 # 在返回数据中查找匹配的股票
-                # efinance 返回的列名是 '股票代码'
                 matching_rows = all_stocks_df[
                     all_stocks_df['股票代码'] == code_suffix_removed
                 ]
 
                 if not matching_rows.empty:
                     row = matching_rows.iloc[0]
+                    # ✅ 编码处理：清理股票名称
+                    raw_name = row.get('股票名称', '')
+                    clean_name = clean_stock_name(str(raw_name))
+
                     result[stock_code] = {
                         'code': stock_code,
-                        'name': row.get('股票名称', ''),
+                        'name': clean_name,
                         'price': float(row['最新价']) if pd.notna(row.get('最新价')) else None,
                         'change_pct': float(row['涨跌幅']) if pd.notna(row.get('涨跌幅')) else None,
                         'volume': int(row['成交量']) if pd.notna(row.get('成交量')) else None,
                         'amount': float(row['成交额']) if pd.notna(row.get('成交额')) else None,
-                        'update_time': datetime.now()
+                        'update_time': datetime.now(),
+                        'data_source': 'efinance'
                     }
 
             logger.info(f"[Efinance] 成功获取 {len(result)}/{len(stock_codes)} 只股票的实时行情")
             return result
 
         except Exception as e:
-            logger.error(f"[Efinance] 获取实时行情失败: {e}")
+            logger.error(f"[efinance] 获取实时行情失败: {e}")
             import traceback
             logger.error(traceback.format_exc())
+            return {}
+
+    def _get_tushare_realtime(self, stock_codes: List[str]) -> Dict:
+        """
+        使用 Tushare 爬虫获取实时行情（备用方案）
+
+        从新浪财经爬取实时股票数据
+        """
+        try:
+            logger.info(f"[Tushare] 正在爬取 {len(stock_codes)} 只股票的实时行情")
+
+            # 检查交易时间
+            now = datetime.now()
+            if now.weekday() >= 5:
+                logger.warning(f"[Tushare] 当前是周末，非交易时间")
+            elif not (9 <= now.hour < 15):
+                logger.warning(f"[Tushare] 当前是非交易时间（{now.hour}点）")
+
+            # 使用 Tushare realtime_quote 接口
+            df = ts.realtime_quote(ts_code=','.join(stock_codes))
+
+            if df.empty:
+                logger.warning(f"[Tushare] realtime_quote 返回空数据")
+                # 降级：尝试使用 daily 接口获取最新交易日数据
+                return self._get_realtime_fallback(stock_codes)
+
+            # 处理返回数据
+            result = {}
+            for _, row in df.iterrows():
+                stock_code = row['ts_code']
+                # ✅ 编码处理：清理股票名称
+                raw_name = row.get('name', '')
+                clean_name = clean_stock_name(str(raw_name))
+
+                result[stock_code] = {
+                    'code': stock_code,
+                    'name': clean_name,
+                    'price': float(row['price']) if pd.notna(row.get('price')) else None,
+                    'change_pct': float(row['change_pct']) if pd.notna(row.get('change_pct')) else None,
+                    'change': float(row['change']) if pd.notna(row.get('change')) else None,
+                    'volume': int(row['volume']) if pd.notna(row.get('volume')) else None,
+                    'amount': float(row['amount']) if pd.notna(row.get('amount')) else None,
+                    'update_time': datetime.now(),
+                    'data_source': 'tushare_realtime'
+                }
+
+            logger.info(f"[Tushare] 成功获取 {len(result)}/{len(stock_codes)} 只股票的实时行情")
+            return result
+
+        except Exception as e:
+            logger.error(f"[Tushare] realtime_quote 接口失败: {e}")
+            # 降级方案
+            return self._get_realtime_fallback(stock_codes)
+
+    def _get_realtime_fallback(self, stock_codes: List[str]) -> Dict:
+        """
+        实时行情降级方案：使用通用行情接口
+
+        如果 realtime_quote 失败，尝试使用其他接口获取实时数据
+        """
+        try:
+            logger.info(f"[Tushare] 使用降级方案获取 {len(stock_codes)} 只股票的最新数据")
+
+            # 使用 daily 接口获取最新交易日数据
+            today = datetime.now().strftime("%Y%m%d")
+
+            df = self.pro.daily(
+                ts_code=','.join(stock_codes),
+                trade_date=today,
+                fields='ts_code,close,open,high,low,vol,amount,pct_chg'
+            )
+
+            if df.empty:
+                logger.warning(f"[Tushare] 降级方案：今天还没有交易数据")
+                return {}
+
+            result = {}
+            for _, row in df.iterrows():
+                stock_code = row['ts_code']
+                # ✅ 编码处理：清理股票名称
+                raw_name = row.get('name', '')
+                clean_name = clean_stock_name(str(raw_name))
+
+                result[stock_code] = {
+                    'code': stock_code,
+                    'name': clean_name,
+                    'price': float(row['close']),
+                    'change_pct': float(row['pct_chg']),
+                    'volume': int(row['vol']),
+                    'amount': float(row['amount']),
+                    'update_time': datetime.now(),
+                    'data_source': 'tushare_daily_fallback'
+                }
+
+            logger.info(f"[Tushare] 降级方案成功获取 {len(result)}/{len(stock_codes)} 只股票的最新数据")
+            return result
+
+        except Exception as e:
+            logger.error(f"[Tushare] 降级方案也失败: {e}")
             return {}
 
     def calculate_fund_realtime_nav(
