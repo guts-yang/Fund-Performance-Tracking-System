@@ -1,7 +1,7 @@
 import api from './index'
 
 // Fund APIs
-export const getFunds = (params = {}) => api.get('/funds', { params })
+export const getFunds = (params = {}) => api.get('/funds/', { params })
 export const getFund = (id) => api.get(`/funds/${id}`)
 export const getFundInfoByCode = (fundCode) => api.get(`/funds/info/${fundCode}`)
 export const createFund = (data) => api.post('/funds', data)

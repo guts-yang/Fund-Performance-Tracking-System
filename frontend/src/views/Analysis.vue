@@ -285,7 +285,7 @@ const initTrendChart = () => {
     dates.push(`${date.getMonth() + 1}/${date.getDate()}`)
 
     // Simulate values based on current total profit
-    const baseValue = totalAssets.value
+    const baseValue = parseFloat(totalAssets.value) || 0
     const variance = (Math.random() - 0.5) * baseValue * 0.02
     values.push((baseValue + variance * (6 - i)).toFixed(2))
   }

@@ -48,7 +48,7 @@ def validate_chinese_name(name: str) -> bool:
     mojibake_patterns = [
         r'[\ufffd]',  # 替换字符
         r'[ÂÃÀÅÆÇÈÉÊË]',  # 常见的乱码字符（Latin-1 补充）
-        r'\x[0-9a-fA-F]{2}',  # 十六进制转义序列
+        r'\\x[0-9a-fA-F]{2}',  # 十六进制转义序列
     ]
 
     for pattern in mojibake_patterns:

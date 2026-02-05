@@ -38,6 +38,8 @@ class HoldingResponse(HoldingBase):
     created_at: datetime
     updated_at: datetime
     cost: Decimal = Field(description="总成本")
+    daily_profit_rate: Optional[Decimal] = Field(None, description="今日收益率")
+    total_profit_rate: Optional[Decimal] = Field(None, description="整体收益率")
 
 
 # ==================== Fund Schemas ====================
@@ -75,6 +77,10 @@ class FundResponse(FundBase):
     created_at: datetime
     updated_at: datetime
     holdings: Optional[HoldingResponse] = None
+
+    # 股票持仓统计
+    stock_positions_count: int = Field(default=0, description="股票持仓数量")
+    stock_positions_updated_at: Optional[datetime] = Field(None, description="持仓最后更新时间")
 
 
 # ==================== NavHistory Schemas ====================
@@ -146,8 +152,10 @@ class PortfolioSummary(BaseModel):
     """投资组合汇总"""
     total_cost: Decimal = Field(description="总成本")
     total_market_value: Decimal = Field(description="总市值")
-    total_profit: Decimal = Field(description="总收益")
-    total_profit_rate: Decimal = Field(description="总收益率")
+    total_profit: Decimal = Field(description="总收益（实时计算）")
+    total_profit_rate: Decimal = Field(description="总收益率（实时计算）")
+    cumulative_profit: Optional[Decimal] = Field(None, description="累计总收益（每日收益叠加）")
+    daily_profits_history: Optional[list[dict]] = Field(None, description="每日收益历史")
     fund_count: int = Field(description="基金数量")
     funds: list[FundSummary] = Field(description="基金列表")
 

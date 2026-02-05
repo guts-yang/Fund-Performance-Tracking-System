@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     SCHEDULER_MINUTE: int = 0
 
     # Tushare Pro
-    TUSHARE_TOKEN: str = ""
+    TUSHARE_TOKEN: str = "" # 从 .env 文件中读取
     TUSHARE_TIMEOUT: int = 10
 
     class Config:

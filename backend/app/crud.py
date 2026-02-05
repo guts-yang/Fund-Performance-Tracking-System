@@ -1,5 +1,5 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_, desc, func
 from typing import List, Optional
 from datetime import date, datetime
 from decimal import Decimal
@@ -76,13 +76,53 @@ def delete_fund(db: Session, fund_id: int) -> bool:
 
 # ==================== Holding CRUD ====================
 def get_holding(db: Session, fund_id: int) -> Optional[models.Holding]:
-    """获取基金持仓"""
-    return db.query(models.Holding).filter(models.Holding.fund_id == fund_id).first()
+    """获取基金持仓（包含基金信息和收益率数据）"""
+    holding = db.query(models.Holding)\
+        .options(joinedload(models.Holding.fund))\
+        .filter(models.Holding.fund_id == fund_id)\
+        .first()
+
+    if holding:
+        _enrich_holding_with_profit_rates(db, holding)
+
+    return holding
 
 
 def get_holdings(db: Session, skip: int = 0, limit: int = 100) -> List[models.Holding]:
-    """获取所有持仓"""
-    return db.query(models.Holding).offset(skip).limit(limit).all()
+    """获取所有持仓（包含基金信息和收益率数据）"""
+    holdings = db.query(models.Holding)\
+        .options(joinedload(models.Holding.fund))\
+        .offset(skip)\
+        .limit(limit)\
+        .all()
+
+    # 为每个持仓计算收益率数据
+    for holding in holdings:
+        _enrich_holding_with_profit_rates(db, holding)
+
+    return holdings
+
+
+def _enrich_holding_with_profit_rates(db: Session, holding: models.Holding):
+    """为持仓对象添加收益率数据（动态属性）"""
+    # 获取最新净值
+    latest_nav = get_latest_nav(db, holding.fund_id)
+
+    # 计算今日收益率（从 DailyPnL 表获取最新记录）
+    latest_pnl = db.query(models.DailyPnL)\
+        .filter(models.DailyPnL.fund_id == holding.fund_id)\
+        .order_by(models.DailyPnL.date.desc())\
+        .first()
+
+    holding.daily_profit_rate = latest_pnl.profit_rate if latest_pnl else None
+
+    # 计算整体收益率（当前市值 / 成本 - 1）
+    if holding.cost > 0 and latest_nav:
+        market_value = holding.shares * latest_nav.unit_nav
+        profit = market_value - holding.cost
+        holding.total_profit_rate = (profit / holding.cost * 100) if holding.cost > 0 else Decimal("0")
+    else:
+        holding.total_profit_rate = None
 
 
 def create_or_update_holding(db: Session, holding: HoldingCreate) -> models.Holding:
@@ -359,6 +399,61 @@ def get_portfolio_summary(db: Session) -> dict:
     }
 
 
+def get_portfolio_cumulative_profit(db: Session) -> dict:
+    """
+    获取投资组合累计总收益（每日收益叠加）
+
+    计算逻辑：
+    1. 获取所有基金的每日收益记录
+    2. 按日期分组求和，得到每日的总收益
+    3. 从最早的记录开始，累计求和得到累计总收益
+
+    Returns:
+        {
+            "cumulative_profit": Decimal,  # 累计总收益
+            "daily_profits": [             # 每日总收益历史
+                {"date": "2024-01-01", "profit": 100.50, "cumulative": 100.50},
+                {"date": "2024-01-02", "profit": 200.30, "cumulative": 300.80},
+                ...
+            ]
+        }
+    """
+    from sqlalchemy import func
+
+    # 获取所有基金的每日收益，按日期分组求和
+    # DailyPnL 已经包含 fund_id，直接查询即可
+    daily_totals = db.query(
+        models.DailyPnL.date,
+        func.sum(models.DailyPnL.profit).label('total_profit')
+    ).group_by(
+        models.DailyPnL.date
+    ).order_by(
+        models.DailyPnL.date.asc()  # 按日期升序排列
+    ).all()
+
+    if not daily_totals:
+        return {
+            "cumulative_profit": Decimal("0"),
+            "daily_profits": []
+        }
+
+    # 计算累计收益
+    cumulative = Decimal("0")
+    daily_profits = []
+    for date, profit in daily_totals:
+        cumulative += profit
+        daily_profits.append({
+            "date": date.isoformat(),
+            "profit": float(profit),
+            "cumulative": float(cumulative)
+        })
+
+    return {
+        "cumulative_profit": cumulative,
+        "daily_profits": daily_profits
+    }
+
+
 def sync_all_funds(db: Session) -> dict:
     """同步所有基金数据"""
     funds = get_funds(db)
@@ -508,13 +603,29 @@ def get_fund_stock_positions(
     fund_id: int,
     report_date: Optional[date] = None
 ) -> List[models.FundStockPosition]:
-    """获取基金股票持仓列表"""
+    """
+    获取基金股票持仓列表
+
+    当未指定 report_date 时，默认返回最新报告期的数据
+    """
     query = db.query(models.FundStockPosition).filter(
         models.FundStockPosition.fund_id == fund_id
     )
 
     if report_date:
         query = query.filter(models.FundStockPosition.report_date == report_date)
+    else:
+        # 🔧 新增：默认只返回最新报告期的数据
+        from sqlalchemy import func
+
+        latest_date = db.query(
+            func.max(models.FundStockPosition.report_date)
+        ).filter(
+            models.FundStockPosition.fund_id == fund_id
+        ).scalar()
+
+        if latest_date:
+            query = query.filter(models.FundStockPosition.report_date == latest_date)
 
     return query.order_by(models.FundStockPosition.weight.desc()).all()
 

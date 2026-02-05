@@ -254,9 +254,9 @@
   }
 
   .table-sci-fi th {
-    padding: 1.25rem 1.75rem; /* Increased padding */
+    padding: 0.625rem 1rem; /* Reduced padding for compact display */
     text-align: left;
-    font-size: 0.875rem; /* Increased from 0.75rem */
+    font-size: 0.75rem; /* Smaller font for compact display */
     font-weight: 500;
     color: var(--sci-cyan);
     text-transform: uppercase;
@@ -278,8 +278,13 @@
   }
 
   .table-sci-fi td {
-    padding: 1.25rem 1.75rem; /* Increased padding */
-    font-size: 1rem; /* Increased from 0.875rem */
+    padding: 0.625rem 1rem; /* Reduced padding for compact display */
+    font-size: 0.875rem; /* Smaller font for compact display */
+  }
+
+  /* Warning color for overseas stocks */
+  .text-warning {
+    color: #fbbf24 !important; /* amber-400 */
   }
 
   /* Input Tech Style */

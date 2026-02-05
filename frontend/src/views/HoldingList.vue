@@ -18,9 +18,9 @@
               <th>基金代码</th>
               <th>基金名称</th>
               <th class="text-right">持有金额</th>
-              <th class="text-right">持有份额</th>
-              <th class="text-right">成本单价</th>
               <th class="text-right">总成本</th>
+              <th class="text-right">今日收益率</th>
+              <th class="text-right">整体收益率</th>
               <th>更新时间</th>
               <th class="text-right">操作</th>
             </tr>
@@ -33,13 +33,23 @@
                 <span class="font-mono-number text-gray-200 text-base">¥{{ formatNumber(row.amount) }}</span>
               </td>
               <td class="text-right">
-                <span class="font-mono-number text-gray-300 text-base">{{ formatNumber(row.shares, 4) }}</span>
-              </td>
-              <td class="text-right">
-                <span class="font-mono-number text-gray-400 text-base">¥{{ formatNumber(row.cost_price, 4) }}</span>
-              </td>
-              <td class="text-right">
                 <span class="font-mono-number text-sci-cyan font-bold text-base">¥{{ formatNumber(row.cost) }}</span>
+              </td>
+              <td class="text-right">
+                <span v-if="row.daily_profit_rate !== null && row.daily_profit_rate !== undefined"
+                      class="font-mono-number text-base"
+                      :class="row.daily_profit_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                  {{ row.daily_profit_rate >= 0 ? '+' : '' }}{{ formatNumber(row.daily_profit_rate, 2) }}%
+                </span>
+                <span v-else class="text-gray-500 text-sm">-</span>
+              </td>
+              <td class="text-right">
+                <span v-if="row.total_profit_rate !== null && row.total_profit_rate !== undefined"
+                      class="font-mono-number text-base font-bold"
+                      :class="row.total_profit_rate >= 0 ? 'text-sci-success' : 'text-sci-danger'">
+                  {{ row.total_profit_rate >= 0 ? '+' : '' }}{{ formatNumber(row.total_profit_rate, 2) }}%
+                </span>
+                <span v-else class="text-gray-500 text-sm">-</span>
               </td>
               <td class="text-gray-400 text-sm">{{ formatDate(row.updated_at) }}</td>
               <td class="text-right">
@@ -80,29 +90,9 @@
             size="large"
           />
         </el-form-item>
-        <el-form-item label="持有份额">
-          <el-input-number
-            v-model="holdingForm.shares"
-            :precision="4"
-            :min="0"
-            controls-position="right"
-            class="input-tech-number w-full"
-            size="large"
-          />
-        </el-form-item>
-        <el-form-item label="成本单价">
-          <el-input-number
-            v-model="holdingForm.cost_price"
-            :precision="4"
-            :min="0"
-            controls-position="right"
-            class="input-tech-number w-full"
-            size="large"
-          />
-        </el-form-item>
         <el-form-item label="总成本">
           <span class="text-2xl font-bold text-sci-cyan font-mono-number stat-value-glow">
-            ¥{{ formatNumber(holdingForm.shares * holdingForm.cost_price) }}
+            ¥{{ formatNumber(holdingForm.amount) }}
           </span>
         </el-form-item>
       </el-form>

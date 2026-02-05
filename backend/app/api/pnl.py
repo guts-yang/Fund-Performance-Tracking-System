@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api/pnl", tags=["pnl"])
 
 @router.get("/summary", response_model=schemas.PortfolioSummary)
 def get_portfolio_summary(db: Session = Depends(get_db)):
-    """获取投资组合汇总（包含累计总收益）"""
+    """获取投资组合汇总（使用累计总收益）"""
 
     # 获取实时计算的投资组合汇总
     summary = crud.get_portfolio_summary(db)
@@ -18,9 +18,17 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
     # 获取累计总收益（每日收益叠加）
     cumulative = crud.get_portfolio_cumulative_profit(db)
 
+    # 🔧 使用累计收益替换实时收益作为 total_profit
+    summary_dict = dict(summary)
+    summary_dict["total_profit"] = cumulative["cumulative_profit"]
+    summary_dict["total_profit_rate"] = (
+        cumulative["cumulative_profit"] / summary_dict["total_cost"] * 100
+        if summary_dict["total_cost"] > 0 else 0
+    )
+
     # 合并返回结果
     return {
-        **summary,
+        **summary_dict,
         "cumulative_profit": cumulative["cumulative_profit"],
         "daily_profits_history": cumulative["daily_profits"]
     }

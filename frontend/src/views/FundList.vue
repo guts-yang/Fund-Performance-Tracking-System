@@ -37,6 +37,7 @@
             <tr>
               <th>基金名称</th>
               <th>基金类型</th>
+              <th class="text-right">股票持仓</th>
               <th class="text-right cursor-pointer hover:text-sci-cyan" @click="handleSort('holdings.amount', 'number')">
                 持有金额
                 <span v-if="sortState.key === 'holdings.amount'">
@@ -64,24 +65,31 @@
             <tr v-for="row in sortedFunds" :key="row.id" class="table-row">
               <td class="font-mono-number text-sci-cyan">{{ row.fund_name || row.fund_code }}</td>
               <td><span class="tag-tech-cyan text-xs">{{ row.fund_type }}</span></td>
-              <td class="text-right font-mono-number">
-                <span v-if="row.holdings && row.holdings.amount" class="text-gray-300">
-                  ¥{{ formatNumber(row.holdings.amount) }}
-                </span>
-                <span v-else class="text-gray-500">未设置</span>
+              <td class="text-right">
+                <div v-if="row.stock_positions_count > 0" class="flex items-center justify-end space-x-2">
+                  <span class="text-sci-gold font-mono-number">{{ row.stock_positions_count }}</span>
+                  <span class="text-gray-200 text-xs">条</span>
+                </div>
+                <div v-else class="text-gray-300 text-xs">未同步</div>
               </td>
               <td class="text-right font-mono-number">
-                <span v-if="row.holdings && row.holdings.shares" class="text-gray-300">
+                <span v-if="row.holdings && row.holdings.amount" class="text-white">
+                  ¥{{ formatNumber(row.holdings.amount) }}
+                </span>
+                <span v-else class="text-gray-300">未设置</span>
+              </td>
+              <td class="text-right font-mono-number">
+                <span v-if="row.holdings && row.holdings.shares" class="text-white">
                   {{ formatNumber(row.holdings.shares) }} 份
                 </span>
-                <span v-else class="text-gray-500">-</span>
+                <span v-else class="text-gray-300">-</span>
               </td>
               <td class="text-right">
                 <div v-if="row.latest_nav_value">
                   <span class="text-xs text-sci-cyan/60 block">正式</span>
                   <div class="font-mono-number">¥{{ formatNumber(row.latest_nav_value, 4) }}</div>
                 </div>
-                <div v-else class="text-gray-500">-</div>
+                <div v-else class="text-gray-300">-</div>
               </td>
               <td class="text-right">
                 <!-- 场内基金：显示实时股价和涨跌 -->
@@ -137,6 +145,15 @@
             </tr>
           </tbody>
         </table>
+
+        <!-- 空状态提示 -->
+        <div v-if="!loading && funds.length === 0" class="text-center py-12">
+          <div class="text-gray-500 text-lg mb-4">暂无基金数据</div>
+          <div class="text-gray-400 text-sm mb-6">请点击上方"添加基金"按钮添加第一只基金</div>
+          <button @click="showAddDialog" class="btn-tech-primary">
+            + 添加基金
+          </button>
+        </div>
       </div>
     </div>
 

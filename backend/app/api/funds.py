@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from typing import List
 import logging
 
@@ -35,13 +36,35 @@ def create_fund(fund: schemas.FundCreate, db: Session = Depends(get_db)):
 
 @router.get("/", response_model=List[schemas.FundResponse])
 def get_funds(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    """获取所有基金列表（包含持仓信息）"""
+    """获取所有基金列表（包含持仓信息和股票持仓统计）"""
+    # 子查询 - 获取每只基金的股票持仓统计
+    stock_positions_subquery = db.query(
+        models.FundStockPosition.fund_id,
+        func.count(models.FundStockPosition.id).label('count'),
+        func.max(models.FundStockPosition.updated_at).label('last_update')
+    ).group_by(models.FundStockPosition.fund_id).subquery()
+
+    # 查询基金列表，包含持仓统计
     funds = db.query(models.Fund)\
         .options(joinedload(models.Fund.holdings))\
+        .outerjoin(stock_positions_subquery, models.Fund.id == stock_positions_subquery.c.fund_id)\
+        .add_columns(
+            stock_positions_subquery.c.count.label('stock_positions_count'),
+            stock_positions_subquery.c.last_update.label('stock_positions_updated_at')
+        )\
         .offset(skip)\
         .limit(limit)\
         .all()
-    return funds
+
+    # 组装响应数据
+    result = []
+    for fund, stock_count, stock_updated in funds:
+        fund_dict = schemas.FundResponse.model_validate(fund).model_dump()
+        fund_dict['stock_positions_count'] = stock_count or 0
+        fund_dict['stock_positions_updated_at'] = stock_updated
+        result.append(schemas.FundResponse(**fund_dict))
+
+    return result
 
 
 @router.get("/{fund_id}", response_model=schemas.FundResponse)
