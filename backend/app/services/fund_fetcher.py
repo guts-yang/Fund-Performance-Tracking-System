@@ -1,9 +1,14 @@
-import efinance as ef
 import pandas as pd
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, Any
 from decimal import Decimal
 import logging
+import json
+
+from ..services.efinance_client import efinance_client
+from ..utils.retry_helper import APICallError
+from ..utils.redis_client import redis_client
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +27,31 @@ class FundDataFetcher:
         Returns:
             基金信息字典
         """
+        # 检查缓存
+        cache_key = f"fund:info:{fund_code}"
+        if redis_client.is_available():
+            cached_value = redis_client.get(cache_key)
+            if cached_value:
+                if cached_value == "NULL":
+                    logger.info(f"[基金信息缓存] 命中（空值）: {cache_key}")
+                    return {
+                        "fund_code": fund_code,
+                        "fund_name": f"基金{fund_code}",
+                        "fund_type": "开放式基金",
+                        "latest_nav": 0,
+                    }
+                try:
+                    result = json.loads(cached_value)
+                    logger.info(f"[基金信息缓存] 命中: {cache_key}")
+                    return result
+                except json.JSONDecodeError:
+                    logger.warning(f"[基金信息缓存] 缓存数据格式错误: {cache_key}")
+
+            logger.info(f"[基金信息缓存] 未命中: {cache_key}，调用API")
+
         try:
-            # 使用 get_base_info 获取基金基本信息
-            fund_info = ef.fund.get_base_info(fund_code)
+            # 使用 get_base_info 获取基金基本信息（带重试）
+            fund_info = efinance_client.get_base_info(fund_code)
 
             if fund_info is None:
                 logger.warning(f"基金 {fund_code} 未找到数据")
@@ -60,21 +87,48 @@ class FundDataFetcher:
                 fund_type = fund_info.get("基金类型", "开放式基金")
                 latest_nav = fund_info.get("最新净值", 0)
 
-            return {
+            result = {
                 "fund_code": fund_code,
                 "fund_name": fund_name,
                 "fund_type": fund_type,
                 "latest_nav": float(latest_nav) if latest_nav else 0,
             }
 
-        except Exception as e:
-            logger.error(f"获取基金 {fund_code} 信息失败: {str(e)}")
-            return {
+            # 更新缓存
+            if redis_client.is_available():
+                cache_value = json.dumps(result, ensure_ascii=False)
+                redis_client.set(cache_key, cache_value, ttl=settings.FUND_INFO_CACHE_TTL)
+                logger.info(f"[基金信息缓存] 已缓存: {cache_key}")
+
+            return result
+
+        except APICallError as e:
+            logger.error(
+                f"获取基金 {fund_code} 信息失败: {e.message}, "
+                f"error_type={e.error_type}, attempts=exhausted"
+            )
+            result = {
                 "fund_code": fund_code,
                 "fund_name": f"基金{fund_code}",
                 "fund_type": "开放式基金",
                 "latest_nav": 0,
             }
+            # 空值缓存
+            if redis_client.is_available():
+                redis_client.set(cache_key, "NULL", ttl=settings.FUND_DATA_NULL_CACHE_TTL)
+            return result
+        except Exception as e:
+            logger.error(f"获取基金 {fund_code} 信息失败: {str(e)}")
+            result = {
+                "fund_code": fund_code,
+                "fund_name": f"基金{fund_code}",
+                "fund_type": "开放式基金",
+                "latest_nav": 0,
+            }
+            # 空值缓存
+            if redis_client.is_available():
+                redis_client.set(cache_key, "NULL", ttl=settings.FUND_DATA_NULL_CACHE_TTL)
+            return result
 
     @staticmethod
     def get_fund_nav(fund_code: str) -> Optional[Dict[str, Any]]:
@@ -87,10 +141,35 @@ class FundDataFetcher:
         Returns:
             净值信息字典
         """
+        # 检查缓存
+        cache_key = f"fund:nav:latest:{fund_code}"
+        if redis_client.is_available():
+            cached_value = redis_client.get(cache_key)
+            if cached_value:
+                if cached_value == "NULL":
+                    logger.info(f"[最新净值缓存] 命中（空值）: {cache_key}")
+                    return None
+                try:
+                    cached_data = json.loads(cached_value)
+                    # 反序列化特殊类型
+                    if cached_data.get("date"):
+                        cached_data["date"] = datetime.strptime(cached_data["date"], "%Y-%m-%d").date()
+                    if cached_data.get("unit_nav"):
+                        cached_data["unit_nav"] = Decimal(str(cached_data["unit_nav"]))
+                    if cached_data.get("accumulated_nav"):
+                        cached_data["accumulated_nav"] = Decimal(str(cached_data["accumulated_nav"]))
+                    if cached_data.get("daily_growth"):
+                        cached_data["daily_growth"] = Decimal(str(cached_data["daily_growth"]))
+                    logger.info(f"[最新净值缓存] 命中: {cache_key}")
+                    return cached_data
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(f"[最新净值缓存] 缓存数据格式错误: {cache_key}, error={e}")
+
+            logger.info(f"[最新净值缓存] 未命中: {cache_key}，调用API")
+
         try:
-            # 使用 get_quote_history 获取历史净值数据
-            # 修复：移除错误的 pz 参数
-            history_df = ef.fund.get_quote_history(fund_code)
+            # 使用 get_quote_history 获取历史净值数据（带重试）
+            history_df = efinance_client.get_quote_history(fund_code)
 
             if history_df is None or history_df.empty:
                 logger.warning(f"基金 {fund_code} 没有净值数据")
@@ -127,7 +206,7 @@ class FundDataFetcher:
                     daily_growth_str = daily_growth_str.replace("%", "").strip()
                 daily_growth = Decimal(str(daily_growth_str)) / 100
 
-            return {
+            result = {
                 "fund_code": fund_code,
                 "date": nav_date,
                 "unit_nav": Decimal(str(unit_nav)),
@@ -135,10 +214,33 @@ class FundDataFetcher:
                 "daily_growth": daily_growth,
             }
 
+            # 更新缓存
+            if redis_client.is_available():
+                # 序列化特殊类型
+                cache_data = result.copy()
+                cache_data["date"] = result["date"].isoformat()
+                cache_data["unit_nav"] = str(result["unit_nav"])
+                cache_data["accumulated_nav"] = str(result["accumulated_nav"])
+                cache_data["daily_growth"] = str(result["daily_growth"])
+                cache_value = json.dumps(cache_data, ensure_ascii=False)
+                redis_client.set(cache_key, cache_value, ttl=settings.FUND_LATEST_NAV_CACHE_TTL)
+                logger.info(f"[最新净值缓存] 已缓存: {cache_key}")
+
+            return result
+
+        except APICallError as e:
+            logger.error(f"获取基金 {fund_code} 净值失败: {e.message}, error_type={e.error_type}")
+            # 空值缓存
+            if redis_client.is_available():
+                redis_client.set(cache_key, "NULL", ttl=settings.FUND_DATA_NULL_CACHE_TTL)
+            return None
         except Exception as e:
             logger.error(f"获取基金 {fund_code} 净值失败: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
+            # 空值缓存
+            if redis_client.is_available():
+                redis_client.set(cache_key, "NULL", ttl=settings.FUND_DATA_NULL_CACHE_TTL)
             return None
 
     @staticmethod
@@ -154,9 +256,36 @@ class FundDataFetcher:
         Returns:
             历史净值列表
         """
+        # 检查缓存
+        cache_key = f"fund:nav:history:{fund_code}:{start_date or 'all'}:{end_date or 'all'}"
+        if redis_client.is_available():
+            cached_value = redis_client.get(cache_key)
+            if cached_value:
+                if cached_value == "NULL":
+                    logger.info(f"[历史净值缓存] 命中（空值）: {cache_key}")
+                    return []
+                try:
+                    cached_list = json.loads(cached_value)
+                    # 反序列化特殊类型
+                    for item in cached_list:
+                        if item.get("date"):
+                            item["date"] = datetime.strptime(item["date"], "%Y-%m-%d").date()
+                        if item.get("unit_nav"):
+                            item["unit_nav"] = Decimal(str(item["unit_nav"]))
+                        if item.get("accumulated_nav"):
+                            item["accumulated_nav"] = Decimal(str(item["accumulated_nav"]))
+                        if item.get("daily_growth"):
+                            item["daily_growth"] = Decimal(str(item["daily_growth"]))
+                    logger.info(f"[历史净值缓存] 命中: {cache_key}")
+                    return cached_list
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(f"[历史净值缓存] 缓存数据格式错误: {cache_key}, error={e}")
+
+            logger.info(f"[历史净值缓存] 未命中: {cache_key}，调用API")
+
         try:
-            # 使用 get_quote_history 获取历史净值数据
-            history_df = ef.fund.get_quote_history(fund_code, pz=40000)
+            # 使用 get_quote_history 获取历史净值数据（带重试）
+            history_df = efinance_client.get_quote_history(fund_code, pz=40000)
 
             if history_df is None or history_df.empty:
                 logger.warning(f"基金 {fund_code} 没有历史数据")
@@ -207,10 +336,34 @@ class FundDataFetcher:
                     "daily_growth": Decimal(str(daily_growth_val)) / 100,
                 })
 
+            # 更新缓存
+            if redis_client.is_available() and result:
+                # 序列化特殊类型
+                cache_list = []
+                for item in result:
+                    cache_item = item.copy()
+                    cache_item["date"] = item["date"].isoformat()
+                    cache_item["unit_nav"] = str(item["unit_nav"])
+                    cache_item["accumulated_nav"] = str(item["accumulated_nav"])
+                    cache_item["daily_growth"] = str(item["daily_growth"])
+                    cache_list.append(cache_item)
+                cache_value = json.dumps(cache_list, ensure_ascii=False)
+                redis_client.set(cache_key, cache_value, ttl=settings.FUND_HISTORY_NAV_CACHE_TTL)
+                logger.info(f"[历史净值缓存] 已缓存: {cache_key}")
+
             return result
 
+        except APICallError as e:
+            logger.error(f"获取基金 {fund_code} 历史数据失败: {e.message}, error_type={e.error_type}")
+            # 空值缓存
+            if redis_client.is_available():
+                redis_client.set(cache_key, "NULL", ttl=settings.FUND_DATA_NULL_CACHE_TTL)
+            return []
         except Exception as e:
             logger.error(f"获取基金 {fund_code} 历史数据失败: {str(e)}")
+            # 空值缓存
+            if redis_client.is_available():
+                redis_client.set(cache_key, "NULL", ttl=settings.FUND_DATA_NULL_CACHE_TTL)
             return []
 
     @staticmethod
@@ -225,9 +378,9 @@ class FundDataFetcher:
             基金列表
         """
         try:
-            # efinance 的搜索功能
+            # efinance 的搜索功能（带重试）
             # 通过 get_fund_codes 获取所有基金，然后筛选
-            funds_df = ef.fund.get_fund_codes()
+            funds_df = efinance_client.get_fund_codes()
 
             if funds_df is None or funds_df.empty:
                 return []
@@ -250,6 +403,9 @@ class FundDataFetcher:
 
             return result
 
+        except APICallError as e:
+            logger.error(f"搜索基金 {keyword} 失败: {e.message}, error_type={e.error_type}")
+            return []
         except Exception as e:
             logger.error(f"搜索基金 {keyword} 失败: {str(e)}")
             return []
@@ -307,8 +463,8 @@ class FundDataFetcher:
             包含实时股价和涨跌幅的字典，失败返回 None
         """
         try:
-            # 尝试获取ETF行情
-            etf_data = ef.stock.get_realtime_quotes('ETF')
+            # 尝试获取ETF行情（带重试）
+            etf_data = efinance_client.get_realtime_quotes('ETF')
             if etf_data is not None and not etf_data.empty:
                 fund_row = etf_data[etf_data['股票代码'] == fund_code]
                 if not fund_row.empty:
@@ -321,8 +477,8 @@ class FundDataFetcher:
                         "estimate_time": datetime.now()
                     }
 
-            # 尝试获取LOF行情
-            lof_data = ef.stock.get_realtime_quotes('LOF')
+            # 尝试获取LOF行情（带重试）
+            lof_data = efinance_client.get_realtime_quotes('LOF')
             if lof_data is not None and not lof_data.empty:
                 fund_row = lof_data[lof_data['股票代码'] == fund_code]
                 if not fund_row.empty:
@@ -337,6 +493,9 @@ class FundDataFetcher:
 
             return None
 
+        except APICallError as e:
+            logger.error(f"获取场内基金 {fund_code} 实时股价失败: {e.message}, error_type={e.error_type}")
+            return None
         except Exception as e:
             logger.error(f"获取场内基金 {fund_code} 实时股价失败: {str(e)}")
             return None
@@ -402,9 +561,9 @@ class FundDataFetcher:
                 # 降级到估算涨跌幅
                 logger.info(f"场内基金 {fund_code} 实时股价获取失败，降级到估算涨跌幅")
 
-        # 场外基金或场内基金降级：使用估算涨跌幅
+        # 场外基金或场内基金降级：使用估算涨跌幅（带重试）
         try:
-            result = ef.fund.get_realtime_increase_rate(fund_code)
+            result = efinance_client.get_realtime_increase_rate(fund_code)
 
             if result is None or (hasattr(result, 'empty') and result.empty):
                 logger.warning(f"基金 {fund_code} 暂无实时估值数据")
@@ -460,6 +619,9 @@ class FundDataFetcher:
                 "latest_nav_date": latest.get("最新净值公开日期") if hasattr(latest, 'get') else None
             }
 
+        except APICallError as e:
+            logger.error(f"获取基金 {fund_code} 实时估值失败: {e.message}, error_type={e.error_type}")
+            return None
         except Exception as e:
             logger.error(f"获取基金 {fund_code} 实时估值失败: {str(e)}")
             import traceback
@@ -498,9 +660,9 @@ class FundDataFetcher:
             # 1. 批量获取场内基金实时股价
             if listed_fund_codes:
                 try:
-                    # 获取所有ETF和LOF的实时行情
-                    etf_data = ef.stock.get_realtime_quotes('ETF')
-                    lof_data = ef.stock.get_realtime_quotes('LOF')
+                    # 获取所有ETF和LOF的实时行情（带重试）
+                    etf_data = efinance_client.get_realtime_quotes('ETF')
+                    lof_data = efinance_client.get_realtime_quotes('LOF')
 
                     # 合并ETF和LOF数据
                     listed_data = None
@@ -533,9 +695,9 @@ class FundDataFetcher:
                     # 失败时全部降级到场外处理
                     offshore_fund_codes.extend(listed_fund_codes)
 
-            # 2. 批量获取场外基金估算涨跌幅
+            # 2. 批量获取场外基金估算涨跌幅（带重试）
             if offshore_fund_codes:
-                result = ef.fund.get_realtime_increase_rate(offshore_fund_codes)
+                result = efinance_client.get_realtime_increase_rate(offshore_fund_codes)
 
                 if result is not None and not (hasattr(result, 'empty') and result.empty):
                     for idx in range(len(result)):
@@ -588,6 +750,9 @@ class FundDataFetcher:
 
             return valuations
 
+        except APICallError as e:
+            logger.error(f"批量获取实时估值失败: {e.message}, error_type={e.error_type}")
+            return []
         except Exception as e:
             logger.error(f"批量获取实时估值失败: {str(e)}")
             import traceback

@@ -10,8 +10,12 @@ from datetime import datetime
 import pandas as pd
 import logging
 import time
+import json
 from ..config import get_settings
 from ..utils.encoding import clean_stock_name, validate_chinese_name
+from ..services.efinance_client import efinance_client
+from ..utils.retry_helper import APICallError
+from ..utils.redis_client import redis_client
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -27,6 +31,16 @@ class TushareService:
         ts.set_token(settings.TUSHARE_TOKEN)
         self.pro = ts.pro_api()
         self.last_call_time = None  # 上次调用时间
+
+        # 检查 Redis 缓存是否可用
+        if redis_client.is_available():
+            logger.info("[TushareService] Redis 缓存已启用")
+        else:
+            logger.warning("[TushareService] Redis 缓存不可用，将每次调用 Tushare API")
+
+    def _get_cache_key(self, stock_code: str) -> str:
+        """生成股票名称缓存键"""
+        return f"stock:name:{stock_code}"
 
     def _rate_limit_delay(self):
         """添加 API 调用延迟，避免频率限制"""
@@ -152,9 +166,119 @@ class TushareService:
             logger.error(traceback.format_exc())
             return {}
 
+    def ensure_stock_names(
+        self,
+        positions: List[Dict],
+        code_field: str = 'stock_code',
+        name_field: str = 'stock_name'
+    ) -> List[Dict]:
+        """
+        确保持仓数据中的股票名称完整且有效
+
+        检查每个持仓记录的股票名称：
+        1. 如果为空，查询 Tushare 补充
+        2. 如果是乱码，使用编码工具修复
+        3. 使用 Redis 缓存避免重复查询
+
+        Args:
+            positions: 持仓记录列表
+            code_field: 股票代码字段名（默认 'stock_code'）
+            name_field: 股票名称字段名（默认 'stock_name'）
+
+        Returns:
+            修复后的持仓记录列表（不修改原列表）
+        """
+        from ..utils.encoding import fix_gbk_mojibake
+
+        # 第一遍遍历：收集需要查询的股票代码
+        missing_codes = []
+        for pos in positions:
+            stock_code = pos.get(code_field, '')
+            stock_name = pos.get(name_field, '')
+
+            # 检查名称是否有效
+            if not stock_name or not validate_chinese_name(stock_name):
+                if stock_code:
+                    # 检查 Redis 缓存
+                    cache_key = self._get_cache_key(stock_code)
+                    cached_name = redis_client.get(cache_key)
+
+                    if not cached_name:
+                        missing_codes.append(stock_code)
+
+        # 批量查询缺失的名称
+        if missing_codes:
+            logger.info(f"[名称补充] 正在查询 {len(missing_codes)} 只股票的名称")
+            name_mapping = self.get_stock_names_batch(missing_codes)
+
+            # 更新 Redis 缓存
+            if name_mapping and redis_client.is_available():
+                cache_data = {
+                    self._get_cache_key(code): name
+                    for code, name in name_mapping.items()
+                    if name  # 只缓存有效名称
+                }
+                redis_client.mset(cache_data, ttl=settings.STOCK_NAME_CACHE_TTL)
+                logger.info(f"[名称补充] 已缓存 {len(cache_data)} 只股票名称到 Redis")
+
+            logger.info(
+                f"[名称补充] 成功获取 {len([n for n in name_mapping.values() if n])}/"
+                f"{len(missing_codes)} 只股票的名称"
+            )
+
+        # 第二遍遍历：修复或补充名称
+        result = []
+        for pos in positions:
+            pos_copy = pos.copy()  # 避免修改原数据
+            stock_code = pos_copy.get(code_field, '')
+            stock_name = pos_copy.get(name_field, '')
+
+            # 策略 1：名称为空，从 Redis 缓存获取
+            if not stock_name:
+                cache_key = self._get_cache_key(stock_code)
+                cached_name = redis_client.get(cache_key)
+                if cached_name:
+                    pos_copy[name_field] = cached_name
+                    logger.debug(f"[名称补充] {stock_code}: 使用 Redis 缓存")
+
+            # 策略 2：名称存在但可能是乱码，尝试修复
+            elif not validate_chinese_name(stock_name):
+                logger.debug(f"[名称修复] {stock_code}: 检测到乱码 '{stock_name}'")
+
+                # 尝试修复 GBK 乱码
+                fixed_name = fix_gbk_mojibake(stock_name)
+                if validate_chinese_name(fixed_name):
+                    pos_copy[name_field] = fixed_name
+                    logger.info(f"[名称修复] {stock_code}: '{stock_name}' → '{fixed_name}'")
+                else:
+                    # 修复失败，尝试清理
+                    cleaned = clean_stock_name(stock_name)
+                    if validate_chinese_name(cleaned):
+                        pos_copy[name_field] = cleaned
+                        logger.info(f"[名称修复] {stock_code}: 清理后 '{cleaned}'")
+                    else:
+                        # 仍然无效，从 Redis 缓存获取
+                        cache_key = self._get_cache_key(stock_code)
+                        cached_name = redis_client.get(cache_key)
+                        if cached_name:
+                            pos_copy[name_field] = cached_name
+                            logger.info(f"[名称修复] {stock_code}: 使用 Redis 缓存名称替换乱码")
+
+            result.append(pos_copy)
+
+        return result
+
+    def clear_name_cache(self) -> None:
+        """清空股票名称缓存（Redis）"""
+        if redis_client.is_available():
+            deleted_count = redis_client.clear_pattern("stock:name:*")
+            logger.info(f"[名称缓存] 已清空 Redis 缓存，删除 {deleted_count} 个键")
+        else:
+            logger.warning("[名称缓存] Redis 不可用，无法清空缓存")
+
     def get_stock_realtime(self, stock_codes: List[str]) -> Dict:
         """
-        获取股票实时行情（多数据源：efinance 主，Tushare 备）
+        获取股票实时行情（带Redis缓存）
 
         优先使用 efinance，失败时降级到 Tushare 爬虫
 
@@ -164,20 +288,75 @@ class TushareService:
         Returns:
             Dict: 实时行情数据，key 为股票代码
         """
-        # 方案1: efinance（主数据源）
-        result = self._get_efinance_realtime(stock_codes)
-        if result:
-            return result
+        import json
+        from ..config import settings
 
-        # 方案2: Tushare 爬虫（备用）
-        logger.warning("[数据源切换] efinance 失败，切换到 Tushare 爬虫接口")
-        return self._get_tushare_realtime(stock_codes)
+        # 判断是否为交易时间
+        is_trading = self._is_trading_time()
+        ttl = settings.STOCK_REALTIME_CACHE_TTL_TRADING if is_trading else settings.STOCK_REALTIME_CACHE_TTL_NON_TRADING
+
+        # 尝试从Redis批量获取
+        cache_keys = [self._get_realtime_cache_key(code) for code in stock_codes]
+        cached_values = redis_client.mget(cache_keys)
+
+        results = {}
+        missed_codes = []
+
+        # 检查缓存命中情况
+        for idx, code in enumerate(stock_codes):
+            cached_value = cached_values[idx]
+            if cached_value:
+                if cached_value == "NULL":
+                    logger.debug(f"[实时行情缓存] 空值命中: {code}")
+                    continue
+                try:
+                    # 反序列化JSON
+                    results[code] = json.loads(cached_value)
+                    logger.debug(f"[实时行情缓存] 命中: {code}")
+                except json.JSONDecodeError:
+                    logger.warning(f"[实时行情缓存] 反序列化失败: {code}")
+                    missed_codes.append(code)
+            else:
+                missed_codes.append(code)
+
+        # 如果全部命中，直接返回
+        if not missed_codes:
+            logger.info(f"[实时行情缓存] 全部命中 {len(results)}/{len(stock_codes)} 只股票")
+            return results
+
+        # 缓存未命中的股票，调用API获取
+        logger.info(f"[实时行情缓存] 未命中 {len(missed_codes)}/{len(stock_codes)} 只股票，调用API")
+
+        # 优先使用 efinance
+        fresh_data = self._get_efinance_realtime(missed_codes)
+        if not fresh_data:
+            # 降级到 Tushare
+            logger.warning("[数据源切换] efinance 失败，切换到 Tushare 爬虫接口")
+            fresh_data = self._get_tushare_realtime(missed_codes)
+
+        # 更新Redis缓存
+        if fresh_data and redis_client.is_available():
+            cache_data = {}
+            for code, quote_data in fresh_data.items():
+                cache_key = self._get_realtime_cache_key(code)
+                # 序列化为JSON（包含 datetime 对象需要自定义序列化器）
+                cache_data[cache_key] = json.dumps(
+                    quote_data,
+                    default=self._json_serializer,
+                    ensure_ascii=False
+                )
+
+            if cache_data:
+                redis_client.mset(cache_data, ttl=ttl)
+                logger.info(f"[实时行情缓存] 已更新 {len(cache_data)} 只股票到 Redis")
+
+        # 合并缓存和新鲜数据
+        results.update(fresh_data)
+        return results
 
     def _get_efinance_realtime(self, stock_codes: List[str]) -> Dict:
-        """使用 efinance 获取实时行情"""
+        """使用 efinance 获取实时行情（带重试）"""
         try:
-            import efinance as ef
-
             logger.info(f"[Efinance] 正在获取 {len(stock_codes)} 只股票的实时行情")
             logger.debug(f"[Efinance] 股票代码列表: {stock_codes}")
 
@@ -188,11 +367,19 @@ class TushareService:
             elif not (9 <= now.hour < 15):  # 非交易时段
                 logger.warning(f"[Efinance] 当前是非交易时间（{now.hour}点），API 可能不可用")
 
-            # efinance API: 获取所有 A 股实时行情
-            all_stocks_df = ef.stock.get_realtime_quotes()
+            # efinance API: 获取所有 A 股实时行情（带重试）
+            all_stocks_df = efinance_client.get_realtime_quotes()
 
             if all_stocks_df is None or all_stocks_df.empty:
                 logger.warning(f"[Efinance] 获取股票实时行情失败：返回空数据")
+                # 空值缓存（防止穿透）
+                if redis_client.is_available():
+                    from ..config import settings
+                    null_cache_data = {
+                        self._get_realtime_cache_key(code): "NULL"
+                        for code in stock_codes
+                    }
+                    redis_client.mset(null_cache_data, ttl=settings.STOCK_REALTIME_CACHE_NULL_TTL)
                 return {}
 
             # 构建股票代码映射（去除交易所后缀进行匹配）
@@ -226,8 +413,11 @@ class TushareService:
             logger.info(f"[Efinance] 成功获取 {len(result)}/{len(stock_codes)} 只股票的实时行情")
             return result
 
+        except APICallError as e:
+            logger.error(f"[Efinance] 获取实时行情失败: {e.message}, error_type={e.error_type}")
+            return {}
         except Exception as e:
-            logger.error(f"[efinance] 获取实时行情失败: {e}")
+            logger.error(f"[Efinance] 获取实时行情失败: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return {}
@@ -403,6 +593,33 @@ class TushareService:
             'update_time': datetime.now(),
             'data_source': 'efinance'
         }
+
+    def _is_trading_time(self) -> bool:
+        """判断当前是否是交易时间"""
+        from datetime import datetime as dt
+
+        now = datetime.now()
+
+        # 周末不是交易日
+        if now.weekday() >= 5:
+            return False
+
+        # 9:30-15:00 为交易时间
+        current_time = now.time()
+        start_time = dt.strptime("09:30", "%H:%M").time()
+        end_time = dt.strptime("15:00", "%H:%M").time()
+
+        return start_time <= current_time <= end_time
+
+    def _get_realtime_cache_key(self, stock_code: str) -> str:
+        """生成实时行情缓存键"""
+        return f"stock:realtime:{stock_code}"
+
+    def _json_serializer(self, obj):
+        """JSON序列化器（处理 datetime 对象）"""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Type {type(obj)} not serializable")
 
 
 # 全局单例实例

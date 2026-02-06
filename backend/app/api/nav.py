@@ -3,11 +3,12 @@ from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime, date
 import logging
-import efinance as ef
 
 from ..database import get_db
 from .. import crud, schemas
 from ..services.fund_fetcher import FundDataFetcher
+from ..services.efinance_client import efinance_client
+from ..utils.retry_helper import APICallError
 
 logger = logging.getLogger(__name__)
 
@@ -423,11 +424,11 @@ async def get_batch_realtime_valuation_by_stocks(
             else:
                 offshore_funds.append(fund_code)
 
-        # 2. 处理场内基金（实时股价）
+        # 2. 处理场内基金（实时股价，带重试）
         if listed_funds:
             try:
-                etf_data = ef.stock.get_realtime_quotes('ETF')
-                lof_data = ef.stock.get_realtime_quotes('LOF')
+                etf_data = efinance_client.get_realtime_quotes('ETF')
+                lof_data = efinance_client.get_realtime_quotes('LOF')
 
                 # 合并数据
                 listed_data = None
@@ -460,6 +461,9 @@ async def get_batch_realtime_valuation_by_stocks(
                         else:
                             # 场内基金未找到，降级到场外处理
                             offshore_funds.append(code)
+            except APICallError as e:
+                logger.error(f"获取场内基金实时股价失败: {e.message}, error_type={e.error_type}")
+                offshore_funds.extend(listed_funds)
             except Exception as e:
                 logger.error(f"获取场内基金实时股价失败: {e}")
                 offshore_funds.extend(listed_funds)

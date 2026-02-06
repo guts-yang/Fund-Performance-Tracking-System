@@ -9,10 +9,13 @@ from typing import List, Optional
 from datetime import date, datetime
 import logging
 import pandas as pd
+import json
 
 from ..database import get_db
-from .. import crud, schemas
+from .. import crud, schemas, models
 from ..services.tushare_service import tushare_service
+from ..utils.redis_client import redis_client
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +26,21 @@ router = APIRouter(prefix="/api/stock-positions", tags=["stock-positions"])
 def get_fund_stock_positions(
     fund_id: int,
     report_date: Optional[str] = None,
+    update_names: bool = False,  # 新增参数：是否同时更新数据库
     db: Session = Depends(get_db)
 ):
     """
     获取基金股票持仓列表
 
+    自动检查并修复股票名称：
+    - 如果名称为空，从 Tushare 查询补充
+    - 如果名称是乱码，尝试修复 GBK 编码问题
+    - 使用内存缓存优化性能
+
     Args:
         fund_id: 基金 ID
         report_date: 报告期（可选），格式 YYYY-MM-DD
+        update_names: 是否同时更新数据库中的名称（默认 False）
 
     Returns:
         股票持仓列表，按持仓占比降序排列
@@ -53,7 +63,116 @@ def get_fund_stock_positions(
                 detail="报告期格式错误，应为 YYYY-MM-DD"
             )
 
-    return crud.get_fund_stock_positions(db, fund_id, report_date_obj)
+    # Redis缓存检查
+    report_date_str = report_date_obj.isoformat() if report_date_obj else 'latest'
+    cache_key = f"fund:positions:{fund_id}:{report_date_str}"
+    ttl = settings.FUND_POSITIONS_CACHE_TTL_WITH_DATE if report_date_obj else settings.FUND_POSITIONS_CACHE_TTL_LATEST
+
+    # 尝试从Redis获取
+    if redis_client.is_available() and not update_names:
+        cached_value = redis_client.get(cache_key)
+        if cached_value:
+            if cached_value == "NULL":
+                logger.debug(f"[持仓缓存] 空值命中: fund_id={fund_id}")
+                return []
+            try:
+                logger.debug(f"[持仓缓存] 命中: fund_id={fund_id}")
+                positions_data = json.loads(cached_value)
+                return [schemas.FundStockPositionResponse(**pos) for pos in positions_data]
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"[持仓缓存] 反序列化失败: fund_id={fund_id}, {e}")
+
+    logger.info(f"[持仓缓存] 未命中: fund_id={fund_id}，查询数据库")
+
+    # 获取持仓数据
+    positions = crud.get_fund_stock_positions(db, fund_id, report_date_obj)
+
+    # 转换为字典列表（便于 ensure_stock_names 处理）
+    positions_dict = [
+        {
+            'id': p.id,
+            'fund_id': fund_id,
+            'stock_code': p.stock_code,
+            'stock_name': p.stock_name,
+            'shares': p.shares,
+            'market_value': p.market_value,
+            'weight': p.weight,
+            'cost_price': p.cost_price,
+            'report_date': p.report_date,
+            'created_at': p.created_at,
+            'updated_at': p.updated_at,
+        }
+        for p in positions
+    ]
+
+    # ✅ 新增：检查并修复股票名称
+    if positions_dict:
+        logger.info(f"[名称修复] 基金 {fund.fund_code}: 检查 {len(positions_dict)} 条持仓记录")
+        fixed_positions = tushare_service.ensure_stock_names(positions_dict)
+
+        # 可选：更新数据库
+        if update_names:
+            logger.info("[名称修复] 同时更新数据库")
+            for fixed_pos in fixed_positions:
+                db_position = db.query(models.FundStockPosition).filter(
+                    models.FundStockPosition.id == fixed_pos['id']
+                ).first()
+
+                if db_position and db_position.stock_name != fixed_pos['stock_name']:
+                    old_name = db_position.stock_name
+                    db_position.stock_name = fixed_pos['stock_name']
+                    logger.info(
+                        f"[名称修复] 更新数据库: {db_position.stock_code} "
+                        f"'{old_name}' → '{fixed_pos['stock_name']}'"
+                    )
+
+            db.commit()
+            # 重新从数据库获取（包含更新的名称）
+            positions = crud.get_fund_stock_positions(db, fund_id, report_date_obj)
+        else:
+            # 直接返回修复后的数据（不更新数据库）
+            # 使用 schemas.FundStockPositionResponse 确保类型匹配
+            positions = []
+            for p in fixed_positions:
+                positions.append(schemas.FundStockPositionResponse(
+                    id=p['id'],
+                    fund_id=p['fund_id'],
+                    stock_code=p['stock_code'],
+                    stock_name=p['stock_name'],
+                    shares=p['shares'],
+                    market_value=p['market_value'],
+                    weight=p['weight'],
+                    cost_price=p['cost_price'],
+                    report_date=p['report_date'],
+                    created_at=p['created_at'],
+                    updated_at=p['updated_at']
+                ))
+
+    # 更新Redis缓存
+    if redis_client.is_available() and positions:
+        cache_value = json.dumps([
+            {
+                'id': p.id,
+                'fund_id': p.fund_id,
+                'stock_code': p.stock_code,
+                'stock_name': p.stock_name,
+                'shares': p.shares,
+                'market_value': p.market_value,
+                'weight': p.weight,
+                'cost_price': p.cost_price,
+                'report_date': p.report_date.isoformat() if p.report_date else None,
+                'created_at': p.created_at.isoformat() if p.created_at else None,
+                'updated_at': p.updated_at.isoformat() if p.updated_at else None,
+            }
+            for p in positions
+        ], ensure_ascii=False)
+
+        redis_client.set(cache_key, cache_value, ttl=ttl)
+        logger.debug(f"[持仓缓存] 已缓存: fund_id={fund_id}, {len(positions)} 条记录")
+    elif redis_client.is_available() and not positions:
+        redis_client.set(cache_key, "NULL", ttl=settings.FUND_POSITIONS_NULL_CACHE_TTL)
+
+    return positions
 
 
 @router.post("/funds/{fund_id}/sync", response_model=schemas.SyncResponse)
@@ -190,6 +309,9 @@ async def sync_fund_stock_positions(
         count = crud.update_fund_stock_positions(db, fund_id, positions)
         logger.info(f"[持仓同步] 成功保存 {count} 条持仓记录到数据库")
 
+        # 同步成功后，失效相关缓存
+        _invalidate_positions_cache(fund_id)
+
         return schemas.SyncResponse(
             success=True,
             message=f"成功同步 {count} 条持仓记录",
@@ -246,3 +368,100 @@ def check_positions_quality(fund_id: int, db: Session = Depends(get_db)):
         "report_date": latest_report,
         "last_update": last_update.isoformat() if last_update else None
     }
+
+
+@router.post("/admin/fix-names", response_model=schemas.SyncResponse)
+async def fix_all_stock_names(
+    fund_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    管理员功能：批量修复股票名称
+
+    扫描数据库中的所有持仓记录，修复缺失或乱码的股票名称。
+    可选择修复特定基金或所有基金。
+
+    Args:
+        fund_id: 基金 ID（可选），不指定则修复所有基金
+
+    Returns:
+        修复结果统计
+    """
+    try:
+        # 构建查询
+        query = db.query(models.FundStockPosition)
+        if fund_id:
+            query = query.filter(models.FundStockPosition.fund_id == fund_id)
+
+        positions = query.all()
+        total_count = len(positions)
+
+        logger.info(f"[批量修复] 开始处理 {total_count} 条持仓记录")
+
+        # 转换为字典列表
+        positions_dict = [
+            {
+                'id': p.id,
+                'stock_code': p.stock_code,
+                'stock_name': p.stock_name or '',
+            }
+            for p in positions
+        ]
+
+        # 批量修复名称
+        fixed_positions = tushare_service.ensure_stock_names(positions_dict)
+
+        # 统计修复数量
+        updated_count = 0
+        for fixed_pos in fixed_positions:
+            db_position = db.query(models.FundStockPosition).filter(
+                models.FundStockPosition.id == fixed_pos['id']
+            ).first()
+
+            if db_position and db_position.stock_name != fixed_pos['stock_name']:
+                old_name = db_position.stock_name
+                db_position.stock_name = fixed_pos['stock_name']
+                updated_count += 1
+
+                logger.info(
+                    f"[批量修复] {db_position.stock_code}: "
+                    f"'{old_name}' → '{fixed_pos['stock_name']}'"
+                )
+
+        # 提交更改
+        db.commit()
+
+        logger.info(f"[批量修复] 完成: 共 {total_count} 条，更新 {updated_count} 条")
+
+        return schemas.SyncResponse(
+            success=True,
+            message=f"成功修复 {updated_count}/{total_count} 条股票名称",
+            funds_updated=updated_count,
+            errors=[]
+        )
+
+    except Exception as e:
+        logger.error(f"[批量修复] 失败: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return schemas.SyncResponse(
+            success=False,
+            message=f"批量修复失败: {str(e)}",
+            funds_updated=0,
+            errors=[str(e)]
+        )
+
+
+def _invalidate_positions_cache(fund_id: int, report_date: Optional[date] = None):
+    """失效持仓缓存"""
+    from ..utils.redis_client import redis_client
+
+    if not redis_client.is_available():
+        return
+
+    report_date_str = report_date.isoformat() if report_date else 'latest'
+    cache_key = f"fund:positions:{fund_id}:{report_date_str}"
+    deleted = redis_client.delete(cache_key)
+
+    if deleted:
+        logger.info(f"[持仓缓存] 已失效缓存: {cache_key}")
