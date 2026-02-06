@@ -1,5 +1,19 @@
 # 基金收益追踪系统
 
+![Version](https://img.shields.io/badge/version-1.8.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-teal.svg)
+![Uvicorn](https://img.shields.io/badge/Uvicorn-0.24.0-0b7285.svg)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0.23-red.svg)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-12+-336791.svg)
+![Redis](https://img.shields.io/badge/Redis-5.0.1-red.svg)
+![Vue](https://img.shields.io/badge/Vue-3.3.8-42b883.svg)
+![Vite](https://img.shields.io/badge/Vite-5.0.4-646cff.svg)
+![Element_Plus](https://img.shields.io/badge/Element_Plus-2.4.4-409eff.svg)
+![ECharts](https://img.shields.io/badge/ECharts-5.4.3-aa66ef.svg)
+![Pinia](https://img.shields.io/badge/Pinia-2.1.7-yellow.svg)
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
+
 基于 **FastAPI + Vue.js + PostgreSQL** 的中国基金实时净收益查询系统，使用 **efinance 和 Tushare** 作为数据源。
 
 ## 系统预览
