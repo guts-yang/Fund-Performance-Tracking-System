@@ -72,6 +72,9 @@
 
 ### 数据库配置
 
+- PostgreSQL配置：[PostgreSQL教程|菜鸟教程](https://www.runoob.com/postgresql/postgresql-tutorial.html)
+- Redis配置：[Redis教程|菜鸟教程](https://www.runoob.com/redis/redis-install.html)
+
 ```sql
 CREATE DATABASE fund_tracker;
 ```
