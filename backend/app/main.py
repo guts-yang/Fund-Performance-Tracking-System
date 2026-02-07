@@ -47,20 +47,20 @@ class CustomJSONResponse(JSONResponse):
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
-    logger.info("Starting up Fund Tracker API...")
+    logger.info("Starting up 天玑基金管理系统 API...")
     init_db()  # Initialize database tables
     start_scheduler()  # Start scheduler
     yield
     # Shutdown
-    logger.info("Shutting down Fund Tracker API...")
+    logger.info("Shutting down 天玑基金管理系统 API...")
     stop_scheduler()
 
 
 # Create FastAPI app
 app = FastAPI(
-    title="Fund Tracker API",
-    description="中国基金实时净收益查询系统",
-    version="1.0.0",
+    title="天玑基金管理系统 API",
+    description="智能基金投资管理与实时分析平台",
+    version="2.0.0",
     lifespan=lifespan,
     default_response_class=CustomJSONResponse
 )
@@ -87,8 +87,10 @@ app.include_router(stock_positions.router)
 def root():
     """Root endpoint"""
     return {
-        "message": "Fund Tracker API",
-        "version": "1.0.0",
+        "name": "天玑基金管理系统",
+        "english_name": "Phecda Fund Management System",
+        "version": "2.0.0",
+        "description": "智能基金投资管理平台",
         "docs": "/docs"
     }
 

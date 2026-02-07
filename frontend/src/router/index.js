@@ -25,6 +25,15 @@ const routes = [
     path: '/analysis',
     name: 'Analysis',
     component: () => import('@/views/Analysis.vue')
+  },
+  {
+    path: '/stock-positions',
+    name: 'StockPositions',
+    component: () => import('@/views/StockPositions.vue'),
+    meta: {
+      title: '股票持仓管理',
+      requiresAuth: false
+    }
   }
 ]
 

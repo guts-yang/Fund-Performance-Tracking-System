@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import date, datetime
 from typing import Optional, List
@@ -40,6 +42,7 @@ class HoldingResponse(HoldingBase):
     cost: Decimal = Field(description="总成本")
     daily_profit_rate: Optional[Decimal] = Field(None, description="今日收益率")
     total_profit_rate: Optional[Decimal] = Field(None, description="整体收益率")
+    fund: FundBasic = Field(description="基金信息")
 
 
 # ==================== Fund Schemas ====================
@@ -48,6 +51,15 @@ class FundBase(BaseModel):
     fund_code: str = Field(..., max_length=10, description="基金代码")
     fund_name: Optional[str] = Field(None, max_length=100, description="基金名称")
     fund_type: Optional[str] = Field(None, max_length=20, description="基金类型")
+
+
+class FundBasic(FundBase):
+    """基金基础信息响应（不含holdings，避免循环引用）"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class FundCreate(FundBase):

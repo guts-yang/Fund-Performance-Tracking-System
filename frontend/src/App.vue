@@ -23,7 +23,7 @@
       <!-- Quantum Command Center Header -->
       <el-header class="app-header h-20 w-full px-6">
         <div class="header-content flex items-center justify-between h-full">
-          <!-- Logo Section with AURUM ANALYTICS Branding -->
+          <!-- Logo Section with 天玑 Phecda Branding -->
           <div class="flex items-center space-x-5">
             <div class="logo-container flex items-center space-x-4 fui-reticle">
               <div class="logo-icon w-14 h-14 flex items-center justify-center
@@ -34,12 +34,12 @@
               </div>
               <div>
                 <h1 class="app-title font-tech font-bold text-xl tracking-widest text-white">
-                  AURUM <span class="text-sci-cyan text-glow-cyan-enhanced">ANALYTICS</span>
+                  天玑 <span class="text-sci-cyan text-glow-cyan-enhanced">Phecda</span>
                 </h1>
                 <div class="text-xs text-sci-cyan/70 font-data tracking-widest flex items-center space-x-2">
-                  <span>// FUND COMMAND v4.5.1</span>
+                  <span>// 基金智能管理 v4.5.1</span>
                   <span class="w-1 h-1 bg-sci-gold rounded-full"></span>
-                  <span class="text-sci-gold/80">QUANTUM INTERFACE</span>
+                  <span class="text-sci-gold/80">财富导航系统</span>
                 </div>
               </div>
             </div>
@@ -59,7 +59,10 @@
               <span class="nav-item-text font-modern">基金管理</span>
             </el-menu-item>
             <el-menu-item index="/holdings" class="nav-item">
-              <span class="nav-item-text font-modern">持仓管理</span>
+              <span class="nav-item-text font-modern">用户持仓</span>
+            </el-menu-item>
+            <el-menu-item index="/stock-positions" class="nav-item">
+              <span class="nav-item-text font-modern">股票持仓</span>
             </el-menu-item>
             <el-menu-item index="/analysis" class="nav-item">
               <span class="nav-item-text font-modern">收益分析</span>

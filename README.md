@@ -1,5 +1,6 @@
 # 基金收益追踪系统
 
+<div align="center">
 ![Version](https://img.shields.io/badge/version-1.8.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-teal.svg)
@@ -13,6 +14,9 @@
 ![ECharts](https://img.shields.io/badge/ECharts-5.4.3-aa66ef.svg)
 ![Pinia](https://img.shields.io/badge/Pinia-2.1.7-yellow.svg)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
+</div>
+
+<br>
 
 基于 **FastAPI + Vue.js + PostgreSQL** 的中国基金实时净收益查询系统，使用 **efinance 和 Tushare** 作为数据源。
 
@@ -22,6 +26,7 @@
 ![基金查询](figures/fund_query.png)
 ![基金管理](figures/funds_management.png)
 ![基金持仓](figures/fund_component.png)
+![持仓分析](figures/Analysis.png)
 
 ## 功能特性
 
@@ -72,8 +77,8 @@
 
 ### 数据库配置
 
-- PostgreSQL配置：[PostgreSQL教程|菜鸟教程](https://www.runoob.com/postgresql/postgresql-tutorial.html)
-- Redis配置：[Redis教程|菜鸟教程](https://www.runoob.com/redis/redis-install.html)
+- PostgreSQL配置：[PostgreSQL教程 | 菜鸟教程](https://www.runoob.com/postgresql/postgresql-tutorial.html)
+- Redis配置：[Redis教程 | 菜鸟教程](https://www.runoob.com/redis/redis-install.html)
 
 ```sql
 CREATE DATABASE fund_tracker;
@@ -86,7 +91,10 @@ cd backend
 pip install -r requirements.txt
 cp .env.example .env
 # 编辑 .env 配置数据库连接和 Tushare Token
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+```bash
+cd backendv
 ```
 
 `.env` 配置示例：
@@ -110,13 +118,17 @@ npm run dev
 
 ### 1. 添加基金
 输入基金代码（如：000001），系统自动获取基金名称和类型
+![添加基金](figures/add_fund.png)
 
 ### 2. 设置持仓
 只需输入持有金额，系统自动计算份额和成本价
+![设置持仓](figures/set_balance.png)
 
 ### 3. 基金交易
 - **买入**：输入金额，自动计算份额，成本价更新为当日净值
 - **卖出**：按金额或份额卖出，成本价保持不变
+![买入](figures/buy.png)
+![卖出](figures/sell.png)
 
 ### 4. 同步数据
 - 手动同步：点击"同步"按钮
@@ -128,7 +140,8 @@ npm run dev
 
 1. 访问 [Tushare Pro](https://tushare.pro/register) 注册账号
 2. 登录后进入「用户中心」→「接口TOKEN」
-3. 复制 Token 到 `backend/.env` 文件的 `TUSHARE_TOKEN` 字段
+3. **学生可以免费申请2000积分，需要提供学生证明，按照对方的要求完成简单任务即可获得**
+4. 复制 Token 到 `backend/.env` 文件的 `TUSHARE_TOKEN` 字段
 
 ### 本项目使用场景
 
