@@ -1,6 +1,7 @@
 # 基金收益追踪系统
 
 <div align="center">
+
 ![Version](https://img.shields.io/badge/version-1.8.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-teal.svg)
@@ -14,6 +15,7 @@
 ![ECharts](https://img.shields.io/badge/ECharts-5.4.3-aa66ef.svg)
 ![Pinia](https://img.shields.io/badge/Pinia-2.1.7-yellow.svg)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
+
 </div>
 
 <br>
